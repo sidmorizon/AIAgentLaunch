@@ -2,6 +2,7 @@ import Foundation
 import XCTest
 @testable import AgentLaunchCore
 
+@MainActor
 final class AgentLaunchCoordinatorTests: XCTestCase {
     func testLaunchSuccessRestoresAfterLaunchNotification() async throws {
         let provider = StubProvider()

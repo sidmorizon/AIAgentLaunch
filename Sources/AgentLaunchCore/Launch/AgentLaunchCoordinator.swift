@@ -8,10 +8,12 @@ public protocol ConfigurationTransactionHandling {
 
 extension ConfigTransaction: ConfigurationTransactionHandling {}
 
+@MainActor
 public protocol ProviderLaunchEventSource {
     func waitForLaunch(of bundleIdentifier: String, timeoutNanoseconds: UInt64) async
 }
 
+@MainActor
 public struct WorkspaceLaunchEventSource: ProviderLaunchEventSource {
     private let notificationCenter: NotificationCenter
 
@@ -81,6 +83,7 @@ private final class LaunchWaitState: @unchecked Sendable {
     }
 }
 
+@MainActor
 public final class AgentLaunchCoordinator {
     private let provider: any AgentProviderBase
     private let transaction: any ConfigurationTransactionHandling

@@ -5,8 +5,7 @@ import SwiftUI
 struct AIAgentLaunchApp: App {
     var body: some Scene {
         MenuBarExtra("Agent Launcher", systemImage: "bolt.circle") {
-            Text("Agent Launcher")
-                .padding()
+            MenuBarContentView()
             Divider()
             Button("Quit") {
                 NSApplication.shared.terminate(nil)
