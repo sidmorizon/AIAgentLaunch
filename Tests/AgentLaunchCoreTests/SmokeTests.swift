@@ -5,4 +5,11 @@ final class SmokeTests: XCTestCase {
     func testCoreModuleLoads() {
         XCTAssertEqual(agentLaunchCoreVersion(), "0.1.0")
     }
+
+    func testReasoningEffortAllOptionsPresent() {
+        XCTAssertEqual(
+            ReasoningEffort.allCases.map(\.rawValue),
+            ["none", "minimal", "low", "medium", "high"]
+        )
+    }
 }
