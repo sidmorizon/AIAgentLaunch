@@ -29,14 +29,6 @@ public struct AgentLauncher: AgentLaunching {
             configuration.environment = mergedEnvironment
         }
 
-        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
-            workspace.openApplication(at: applicationURL, configuration: configuration) { _, error in
-                if let error {
-                    continuation.resume(throwing: error)
-                    return
-                }
-                continuation.resume(returning: ())
-            }
-        }
+        _ = try await workspace.openApplication(at: applicationURL, configuration: configuration)
     }
 }
