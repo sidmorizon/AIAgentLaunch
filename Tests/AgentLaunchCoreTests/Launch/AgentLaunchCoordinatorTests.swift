@@ -22,7 +22,10 @@ final class AgentLaunchCoordinatorTests: XCTestCase {
         XCTAssertEqual(transaction.applyCount, 1)
         XCTAssertEqual(transaction.restoreCount, 0)
         XCTAssertEqual(launcher.launchCount, 1)
-        XCTAssertEqual(launcher.lastEnvironmentVariables?["OPENAI_API_KEY"], "sk-test")
+        XCTAssertEqual(
+            launcher.lastEnvironmentVariables?[AgentProxyConfigDefaults.apiKeyEnvironmentVariableName],
+            "sk-test"
+        )
         XCTAssertEqual(eventSource.waitCount, 1)
         XCTAssertFalse(transaction.lastTemporaryConfiguration?.contains("api_key =") == true)
         XCTAssertFalse(transaction.lastTemporaryConfiguration?.contains("sk-test") == true)
@@ -89,7 +92,7 @@ private struct StubProvider: AgentProviderBase {
     let providerDisplayName = "Stub"
     let applicationBundleIdentifier = "com.example.stub"
     let configurationFilePath = URL(fileURLWithPath: "/tmp/stub-config.toml")
-    let apiKeyEnvironmentVariableName = "OPENAI_API_KEY"
+    let apiKeyEnvironmentVariableName = AgentProxyConfigDefaults.apiKeyEnvironmentVariableName
 
     func renderTemporaryConfiguration(from launchConfiguration: AgentProxyLaunchConfig) -> String {
         AgentConfigRenderer().renderTemporaryConfiguration(from: launchConfiguration)

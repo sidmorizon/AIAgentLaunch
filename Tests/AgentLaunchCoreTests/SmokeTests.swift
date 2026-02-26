@@ -9,7 +9,7 @@ final class SmokeTests: XCTestCase {
     func testReasoningEffortAllOptionsPresent() {
         XCTAssertEqual(
             ReasoningEffort.allCases.map(\.rawValue),
-            ["minimal", "low", "medium", "high"]
+            ["none", "minimal", "low", "medium", "high", "xhigh"]
         )
     }
 }

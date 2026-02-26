@@ -13,7 +13,6 @@ struct MenuBarContentView: View {
     var body: some View {
         ZStack {
             VStack(alignment: .leading, spacing: 14) {
-                headerSection
                 modeSection
 
                 if viewModel.mode == .proxy {
@@ -67,38 +66,20 @@ struct MenuBarContentView: View {
         }
     }
 
-    private var headerSection: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text("Codex Launcher")
-                .font(.headline)
-            Text("当前模式：\(viewModel.mode == .proxy ? "API 代理版" : "原版")")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-        }
-    }
-
     private var modeSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("选择模式")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-
-            HStack(spacing: 8) {
-                modeOptionButton(
-                    mode: .proxy,
-                    title: "API 代理版",
-                    subtitle: "配置 Base URL / API Key"
-                )
-                modeOptionButton(
-                    mode: .original,
-                    title: "原版",
-                    subtitle: "直接启动 Codex"
-                )
-            }
+        HStack(spacing: 8) {
+            modeOptionButton(
+                mode: .proxy,
+                title: "API 代理版"
+            )
+            modeOptionButton(
+                mode: .original,
+                title: "原版"
+            )
         }
     }
 
-    private func modeOptionButton(mode: LaunchMode, title: String, subtitle: String) -> some View {
+    private func modeOptionButton(mode: LaunchMode, title: String) -> some View {
         let isSelected = viewModel.mode == mode
 
         return Button {
@@ -106,16 +87,11 @@ struct MenuBarContentView: View {
             NSApplication.shared.keyWindow?.makeFirstResponder(nil)
             viewModel.mode = mode
         } label: {
-            VStack(alignment: .leading, spacing: 4) {
-                HStack(spacing: 6) {
-                    Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
-                        .font(.caption)
-                    Text(title)
-                        .font(.subheadline.weight(.semibold))
-                }
-                Text(subtitle)
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
+            HStack(spacing: 6) {
+                Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+                    .font(.caption)
+                Text(title)
+                    .font(.subheadline.weight(.semibold))
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.horizontal, 10)
@@ -255,7 +231,7 @@ struct MenuBarContentView: View {
                         .font(.caption)
                 }
                 .buttonStyle(.plain)
-                .help("查看本次启动写入的 config.toml")
+                .help("查看本次启动使用的 config.toml")
             }
         }
         .foregroundStyle(fgColor)
@@ -269,7 +245,7 @@ struct MenuBarContentView: View {
 
     private var launchConfigPreviewOverlay: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("本次启动写入的 config.toml")
+            Text("本次启动使用的 config.toml")
                 .font(.headline)
             ScrollView {
                 Text(viewModel.lastLaunchedProxyConfigTOML ?? "")

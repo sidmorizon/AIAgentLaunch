@@ -26,11 +26,19 @@ final class DefaultMenuBarLaunchRouterTests: XCTestCase {
             )
         )
 
-        try await router.launchOriginalMode()
+        let launchedConfiguration = try await router.launchOriginalMode()
 
         XCTAssertEqual(launcher.launchCount, 1)
         XCTAssertEqual(
             try String(contentsOf: configurationFilePath, encoding: .utf8),
+            """
+            # profile = "custom-profile"
+            [profiles.custom-profile]
+            model = "gpt-5"
+            """
+        )
+        XCTAssertEqual(
+            launchedConfiguration,
             """
             # profile = "custom-profile"
             [profiles.custom-profile]
@@ -53,7 +61,7 @@ private struct StubProvider: AgentProviderBase {
     let providerDisplayName = "Stub"
     let applicationBundleIdentifier = "com.example.stub"
     let configurationFilePath: URL
-    let apiKeyEnvironmentVariableName = "OPENAI_API_KEY"
+    let apiKeyEnvironmentVariableName = AgentProxyConfigDefaults.apiKeyEnvironmentVariableName
 
     func renderTemporaryConfiguration(from launchConfiguration: AgentProxyLaunchConfig) -> String {
         AgentConfigRenderer().renderTemporaryConfiguration(from: launchConfiguration)

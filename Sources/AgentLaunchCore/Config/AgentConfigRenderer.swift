@@ -3,21 +3,17 @@ public struct AgentConfigRenderer {
 
     public func renderTemporaryConfiguration(
         from launchConfiguration: AgentProxyLaunchConfig,
-        profileIdentifier: String = "1k",
-        providerDisplayName: String = "CLIProxyOneKey",
-        apiKeyEnvironmentVariableName: String = "OPENAI_API_KEY"
+        profileIdentifier: String = AgentProxyConfigDefaults.profileIdentifier,
+        providerDisplayName: String = AgentProxyConfigDefaults.providerDisplayName,
+        apiKeyEnvironmentVariableName: String = AgentProxyConfigDefaults.apiKeyEnvironmentVariableName
     ) -> String {
-        let renderedReasoningEffort = launchConfiguration.reasoningLevel == .high
-            ? "xhigh"
-            : launchConfiguration.reasoningLevel.rawValue
-
         return """
         profile = "\(profileIdentifier)"
 
         [profiles.\(profileIdentifier)]
         model_provider = "\(profileIdentifier)"
         model = "\(launchConfiguration.modelIdentifier)"
-        model_reasoning_effort = "\(renderedReasoningEffort)"
+        model_reasoning_effort = "\(launchConfiguration.reasoningLevel.rawValue)"
 
         [model_providers.\(profileIdentifier)]
         name = "\(providerDisplayName)"

@@ -481,8 +481,16 @@ final class MenuBarViewModelTests: XCTestCase {
         XCTAssertTrue(viewModel.canInspectLastLaunchConfigTOML)
     }
 
-    func testSuccessfulOriginalLaunchClearsTemporaryConfigInspectionState() async {
-        let router = SpyLaunchRouter()
+    func testSuccessfulOriginalLaunchStoresConfigForInspection() async {
+        let originalConfigurationForInspection = """
+        # profile = "legacy"
+
+        [profiles.legacy]
+        model = "gpt-5"
+        """
+        let router = SpyLaunchRouter(
+            originalLaunchConfiguration: originalConfigurationForInspection
+        )
         let viewModel = MenuBarViewModel(
             modelDiscovery: StubModelDiscovery(result: .success(["gpt-5"])),
             launchRouter: router,
@@ -496,20 +504,12 @@ final class MenuBarViewModelTests: XCTestCase {
             ),
             apiKeyStore: InMemoryAPIKeyStore()
         )
-        viewModel.mode = .proxy
-        viewModel.baseURLText = "https://example.com/v1"
-        viewModel.apiKeyMasked = "sk-test"
-        viewModel.selectedModel = "gpt-5"
-        viewModel.models = ["gpt-5"]
-        await viewModel.launchSelectedAgent()
-        XCTAssertNotNil(viewModel.lastLaunchedProxyConfigTOML)
-
         viewModel.mode = .original
         await viewModel.launchSelectedAgent()
 
         XCTAssertEqual(router.launchOriginalCallCount, 1)
-        XCTAssertNil(viewModel.lastLaunchedProxyConfigTOML)
-        XCTAssertFalse(viewModel.canInspectLastLaunchConfigTOML)
+        XCTAssertEqual(viewModel.lastLaunchedProxyConfigTOML, originalConfigurationForInspection)
+        XCTAssertTrue(viewModel.canInspectLastLaunchConfigTOML)
     }
 
     func testLaunchFailureInProxyModeTransitionsToLaunchFailedState() async {
@@ -557,24 +557,28 @@ private final class SpyLaunchRouter: MenuBarLaunchRouting {
     private(set) var launchProxyCallCount = 0
     private(set) var lastProxyConfiguration: AgentProxyLaunchConfig?
     private let originalLaunchError: Error?
+    private let originalLaunchConfiguration: String?
     private let proxyLaunchError: Error?
     private let proxyLaunchMergedConfiguration: String?
 
     init(
         originalLaunchError: Error? = nil,
+        originalLaunchConfiguration: String? = nil,
         proxyLaunchError: Error? = nil,
         proxyLaunchMergedConfiguration: String? = nil
     ) {
         self.originalLaunchError = originalLaunchError
+        self.originalLaunchConfiguration = originalLaunchConfiguration
         self.proxyLaunchError = proxyLaunchError
         self.proxyLaunchMergedConfiguration = proxyLaunchMergedConfiguration
     }
 
-    func launchOriginalMode() async throws {
+    func launchOriginalMode() async throws -> String? {
         launchOriginalCallCount += 1
         if let originalLaunchError {
             throw originalLaunchError
         }
+        return originalLaunchConfiguration
     }
 
     func launchProxyMode(configuration: AgentProxyLaunchConfig) async throws -> String {

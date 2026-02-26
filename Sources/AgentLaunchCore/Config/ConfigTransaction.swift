@@ -85,10 +85,14 @@ public final class ConfigTransaction {
 
         let temporaryLayout = parseTemporaryConfigLayout(from: trimmedTemporaryConfiguration)
         let temporaryTopLevelKeys = Set(temporaryLayout.topLevelAssignments.map(\.key))
+        let temporaryTopLevelAssignments = Dictionary(
+            uniqueKeysWithValues: temporaryLayout.topLevelAssignments.map { ($0.key, $0.line) }
+        )
 
         var mergedLines: [String] = []
         var currentSectionName: String?
         var insertedTopLevelOverrides = false
+        var insertedTopLevelKeys = Set<String>()
         var appendedOverridesForSection = Set<String>()
         var seenSections = Set<String>()
 
@@ -97,7 +101,8 @@ public final class ConfigTransaction {
                 if !insertedTopLevelOverrides {
                     appendTopLevelOverridesIfNeeded(
                         to: &mergedLines,
-                        layout: temporaryLayout
+                        layout: temporaryLayout,
+                        insertedKeys: &insertedTopLevelKeys
                     )
                     insertedTopLevelOverrides = true
                 }
@@ -112,6 +117,15 @@ public final class ConfigTransaction {
                 currentSectionName = sectionName
                 seenSections.insert(sectionName)
                 mergedLines.append(line)
+                continue
+            }
+
+            if currentSectionName == nil,
+               let commentedTopLevelKey = parseCommentedAssignmentKey(from: line),
+               let replacementLine = temporaryTopLevelAssignments[commentedTopLevelKey],
+               !insertedTopLevelKeys.contains(commentedTopLevelKey) {
+                mergedLines.append(replacementLine)
+                insertedTopLevelKeys.insert(commentedTopLevelKey)
                 continue
             }
 
@@ -133,7 +147,8 @@ public final class ConfigTransaction {
         if !insertedTopLevelOverrides {
             appendTopLevelOverridesIfNeeded(
                 to: &mergedLines,
-                layout: temporaryLayout
+                layout: temporaryLayout,
+                insertedKeys: &insertedTopLevelKeys
             )
             insertedTopLevelOverrides = true
         }
@@ -205,10 +220,13 @@ public final class ConfigTransaction {
 
     private func appendTopLevelOverridesIfNeeded(
         to mergedLines: inout [String],
-        layout: TemporaryConfigLayout
+        layout: TemporaryConfigLayout,
+        insertedKeys: inout Set<String>
     ) {
         for assignment in layout.topLevelAssignments {
+            guard !insertedKeys.contains(assignment.key) else { continue }
             mergedLines.append(assignment.line)
+            insertedKeys.insert(assignment.key)
         }
     }
 
@@ -300,6 +318,18 @@ public final class ConfigTransaction {
         let key = trimmed[..<equalIndex].trimmingCharacters(in: .whitespacesAndNewlines)
         guard !key.isEmpty else { return nil }
         return key
+    }
+
+    private func parseCommentedAssignmentKey(from line: String) -> String? {
+        let content = line.drop { $0 == " " || $0 == "\t" }
+        guard content.hasPrefix("#") else { return nil }
+
+        let uncommented = content.dropFirst().trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !uncommented.isEmpty, !uncommented.hasPrefix("[") else { return nil }
+        guard let equalIndex = uncommented.firstIndex(of: "=") else { return nil }
+
+        let key = uncommented[..<equalIndex].trimmingCharacters(in: .whitespacesAndNewlines)
+        return key.isEmpty ? nil : key
     }
 
     private func stripInlineComment(from line: String) -> String {

@@ -70,11 +70,11 @@ final class ConfigTransactionTests: XCTestCase {
         _ = try transaction.applyTemporaryConfiguration(temporaryConfigurationText, at: configurationFilePath)
 
         let mergedConfigurationText = try readConfigurationText(from: configurationFilePath)
-        XCTAssertTrue(mergedConfigurationText.contains("profile = \"1k\""))
+        XCTAssertTrue(mergedConfigurationText.contains("profile = \"\(AgentProxyConfigDefaults.profileIdentifier)\""))
         XCTAssertTrue(mergedConfigurationText.contains("[profiles.legacy]"))
         XCTAssertTrue(mergedConfigurationText.contains("[shell_environment_policy]"))
-        XCTAssertTrue(mergedConfigurationText.contains("[profiles.1k]"))
-        XCTAssertTrue(mergedConfigurationText.contains("[model_providers.1k]"))
+        XCTAssertTrue(mergedConfigurationText.contains("[profiles.\(AgentProxyConfigDefaults.profileIdentifier)]"))
+        XCTAssertTrue(mergedConfigurationText.contains("[model_providers.\(AgentProxyConfigDefaults.profileIdentifier)]"))
     }
 
     func testApplyTemporaryConfigurationReplacesConflictingSectionsInsteadOfDuplicating() throws {
@@ -82,12 +82,12 @@ final class ConfigTransactionTests: XCTestCase {
         let originalConfigurationText = """
         profile = "legacy"
 
-        [profiles.1k]
+        [profiles.\(AgentProxyConfigDefaults.profileIdentifier)]
         model_provider = "old"
         model = "old-model"
         model_reasoning_effort = "low"
 
-        [model_providers.1k]
+        [model_providers.\(AgentProxyConfigDefaults.profileIdentifier)]
         name = "Old Provider"
         base_url = "https://old.example.com/v1"
         wire_api = "responses"
@@ -108,12 +108,12 @@ final class ConfigTransactionTests: XCTestCase {
         _ = try transaction.applyTemporaryConfiguration(temporaryConfigurationText, at: configurationFilePath)
 
         let mergedConfigurationText = try readConfigurationText(from: configurationFilePath)
-        XCTAssertEqual(mergedConfigurationText.components(separatedBy: "[profiles.1k]").count - 1, 1)
-        XCTAssertEqual(mergedConfigurationText.components(separatedBy: "[model_providers.1k]").count - 1, 1)
+        XCTAssertEqual(mergedConfigurationText.components(separatedBy: "[profiles.\(AgentProxyConfigDefaults.profileIdentifier)]").count - 1, 1)
+        XCTAssertEqual(mergedConfigurationText.components(separatedBy: "[model_providers.\(AgentProxyConfigDefaults.profileIdentifier)]").count - 1, 1)
         XCTAssertFalse(mergedConfigurationText.contains("base_url = \"https://old.example.com/v1\""))
         XCTAssertFalse(mergedConfigurationText.contains("env_key= \"OLD_ENV_KEY\""))
         XCTAssertTrue(mergedConfigurationText.contains("base_url = \"https://llm-api.onekeytest.com/v1\""))
-        XCTAssertTrue(mergedConfigurationText.contains("env_key= \"OPENAI_API_KEY\""))
+        XCTAssertTrue(mergedConfigurationText.contains("env_key= \"\(AgentProxyConfigDefaults.apiKeyEnvironmentVariableName)\""))
     }
 
     func testApplyTemporaryConfigurationKeepsNonConflictingKeysInsideSameSection() throws {
@@ -121,13 +121,13 @@ final class ConfigTransactionTests: XCTestCase {
         let originalConfigurationText = """
         profile = "legacy"
 
-        [profiles.1k]
+        [profiles.\(AgentProxyConfigDefaults.profileIdentifier)]
         model_provider = "old-provider"
         model = "old-model"
         model_reasoning_effort = "low"
         preserve_me = "legacy-extra"
 
-        [model_providers.1k]
+        [model_providers.\(AgentProxyConfigDefaults.profileIdentifier)]
         name = "Old Provider"
         base_url = "https://old.example.com/v1"
         wire_api = "responses"
@@ -152,7 +152,42 @@ final class ConfigTransactionTests: XCTestCase {
         XCTAssertTrue(mergedConfigurationText.contains("preserve_me = \"legacy-extra\""))
         XCTAssertTrue(mergedConfigurationText.contains("preserve_provider_key = \"keep-this\""))
         XCTAssertTrue(mergedConfigurationText.contains("model = \"gpt-5.3-codex\""))
-        XCTAssertTrue(mergedConfigurationText.contains("env_key= \"OPENAI_API_KEY\""))
+        XCTAssertTrue(mergedConfigurationText.contains("env_key= \"\(AgentProxyConfigDefaults.apiKeyEnvironmentVariableName)\""))
+    }
+
+    func testApplyTemporaryConfigurationUncommentsExistingCommentedProfileAssignmentInsteadOfAppending() throws {
+        let configurationFilePath = try makeTemporaryConfigFilePath()
+        let originalConfigurationText = """
+        # profile = "legacy"
+
+        [shell_environment_policy]
+        inherit = "core"
+        """
+        try writeConfigurationText(originalConfigurationText, to: configurationFilePath)
+
+        let temporaryConfigurationText = AgentConfigRenderer().renderTemporaryConfiguration(
+            from: AgentProxyLaunchConfig(
+                apiBaseURL: URL(string: "https://llm-api.onekeytest.com/v1")!,
+                providerAPIKey: "sk-temp",
+                modelIdentifier: "gpt-5.3-codex",
+                reasoningLevel: .high
+            )
+        )
+
+        let transaction = ConfigTransaction()
+        _ = try transaction.applyTemporaryConfiguration(temporaryConfigurationText, at: configurationFilePath)
+
+        let mergedConfigurationText = try readConfigurationText(from: configurationFilePath)
+        let profileLines = mergedConfigurationText
+            .replacingOccurrences(of: "\r\n", with: "\n")
+            .split(separator: "\n", omittingEmptySubsequences: false)
+            .map(String.init)
+            .filter {
+                let trimmed = $0.trimmingCharacters(in: .whitespacesAndNewlines)
+                return trimmed.hasPrefix("profile =") || trimmed.hasPrefix("# profile =")
+            }
+
+        XCTAssertEqual(profileLines, ["profile = \"\(AgentProxyConfigDefaults.profileIdentifier)\""])
     }
 
     private func makeTemporaryConfigFilePath() throws -> URL {

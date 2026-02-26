@@ -11,7 +11,7 @@ extension ModelDiscoveryService: ModelDiscovering {}
 
 @MainActor
 public protocol MenuBarLaunchRouting {
-    func launchOriginalMode() async throws
+    func launchOriginalMode() async throws -> String?
     func launchProxyMode(configuration: AgentProxyLaunchConfig) async throws -> String
 }
 
@@ -118,16 +118,23 @@ public struct DefaultMenuBarLaunchRouter: MenuBarLaunchRouting {
         self.fileManager = fileManager
     }
 
-    public func launchOriginalMode() async throws {
+    public func launchOriginalMode() async throws -> String? {
         try commentOutProfileAssignmentIfNeeded(at: provider.configurationFilePath)
+        let launchedConfiguration = try readConfigurationTextIfPresent(at: provider.configurationFilePath)
         try await launcher.launchApplication(
             bundleIdentifier: provider.applicationBundleIdentifier,
             environmentVariables: [:]
         )
+        return launchedConfiguration
     }
 
     public func launchProxyMode(configuration: AgentProxyLaunchConfig) async throws -> String {
         try await coordinator.launchWithTemporaryConfiguration(configuration)
+    }
+
+    private func readConfigurationTextIfPresent(at configurationFilePath: URL) throws -> String? {
+        guard fileManager.fileExists(atPath: configurationFilePath.path) else { return nil }
+        return try String(contentsOf: configurationFilePath, encoding: .utf8)
     }
 
     private func commentOutProfileAssignmentIfNeeded(at configurationFilePath: URL) throws {
@@ -264,7 +271,6 @@ public final class MenuBarViewModel: ObservableObject {
 
     public var canInspectLastLaunchConfigTOML: Bool {
         guard statusMessage == "Launch requested." else { return false }
-        guard mode == .proxy else { return false }
         guard let lastLaunchedProxyConfigTOML else { return false }
         return !lastLaunchedProxyConfigTOML.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
@@ -320,12 +326,11 @@ public final class MenuBarViewModel: ObservableObject {
         isLaunching = true
         defer { isLaunching = false }
 
-        var renderedProxyConfigurationForInspection: String?
+        var renderedConfigurationForInspection: String?
         do {
             switch mode {
             case .original:
-                try await launchRouter.launchOriginalMode()
-                renderedProxyConfigurationForInspection = nil
+                renderedConfigurationForInspection = try await launchRouter.launchOriginalMode()
             case .proxy:
                 guard let apiBaseURL = validatedBaseURL(from: baseURLText) else {
                     state = .launchFailed
@@ -339,10 +344,10 @@ public final class MenuBarViewModel: ObservableObject {
                     modelIdentifier: selectedModel,
                     reasoningLevel: reasoningLevel
                 )
-                renderedProxyConfigurationForInspection = try await launchRouter
+                renderedConfigurationForInspection = try await launchRouter
                     .launchProxyMode(configuration: configuration)
             }
-            lastLaunchedProxyConfigTOML = renderedProxyConfigurationForInspection
+            lastLaunchedProxyConfigTOML = renderedConfigurationForInspection
             state = .idle
             setStatusMessage("Launch requested.")
             if mode == .proxy {
