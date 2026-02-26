@@ -115,6 +115,8 @@ cat > "$CONTENTS_DIR/Info.plist" <<EOF_PLIST
     <string>14.0</string>
     <key>LSUIElement</key>
     <true/>
+    <key>SUEnableAutomaticChecks</key>
+    <false/>
 $SU_FEED_BLOCK
 $SPARKLE_PUBLIC_KEY_BLOCK
 </dict>

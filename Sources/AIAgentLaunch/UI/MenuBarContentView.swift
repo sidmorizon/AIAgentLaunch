@@ -67,6 +67,7 @@ struct MenuBarContentView: View {
         .animation(.easeInOut(duration: 0.16), value: isShowingLaunchConfigPreview)
         .task(id: viewModel.mode) {
             await viewModel.handlePanelPresented()
+            sparkleUpdaterController.checkForUpdateInformationSilently()
         }
         .onChange(of: viewModel.canInspectLastLaunchConfigTOML) { _, canInspect in
             if !canInspect {
@@ -88,8 +89,22 @@ struct MenuBarContentView: View {
             Spacer()
 
             Menu {
-                Button("检测升级") {
+                Button {
                     sparkleUpdaterController.checkForUpdates()
+                } label: {
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text("检测升级")
+                        if let updateHintText = sparkleUpdaterController.updateHintText {
+                            Text(updateHintText)
+                                .font(.caption2)
+                                .foregroundStyle(
+                                    sparkleUpdaterController.hasAvailableUpdate
+                                        ? Color(red: 0.85, green: 0.44, blue: 0.05)
+                                        : .secondary
+                                )
+                                .lineLimit(1)
+                        }
+                    }
                 }
                 .disabled(!sparkleUpdaterController.canCheckForUpdates)
 
@@ -99,12 +114,18 @@ struct MenuBarContentView: View {
                     NSApplication.shared.terminate(nil)
                 }
             } label: {
-                Image(systemName: "ellipsis.circle")
-                    .font(.title3.weight(.semibold))
+                HStack(spacing: 4) {
+                    Image(systemName: "ellipsis.circle")
+                        .font(.title3.weight(.semibold))
+                    Image(systemName: "chevron.down")
+                        .font(.caption.weight(.semibold))
+                }
                     .foregroundStyle(Color(red: 0.11, green: 0.52, blue: 0.84))
                     .padding(4)
             }
+            .menuIndicator(.hidden)
             .menuStyle(.borderlessButton)
+            .fixedSize()
             .help(sparkleUpdaterController.isConfigured ? "菜单" : "未配置升级源")
         }
     }
