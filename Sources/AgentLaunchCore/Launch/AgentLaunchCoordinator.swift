@@ -2,7 +2,7 @@ import AppKit
 import Foundation
 
 public protocol ConfigurationTransactionHandling {
-    func applyTemporaryConfiguration(_ temporaryConfiguration: String, at configurationFilePath: URL) throws
+    func applyTemporaryConfiguration(_ temporaryConfiguration: String, at configurationFilePath: URL) throws -> String
     func restoreOriginalConfiguration(at configurationFilePath: URL) throws
 }
 
@@ -105,15 +105,18 @@ public final class AgentLaunchCoordinator {
         self.launchTimeoutNanoseconds = launchTimeoutNanoseconds
     }
 
-    public func launchWithTemporaryConfiguration(_ launchConfiguration: AgentProxyLaunchConfig) async throws {
+    public func launchWithTemporaryConfiguration(_ launchConfiguration: AgentProxyLaunchConfig) async throws -> String {
         let temporaryConfiguration = provider.renderTemporaryConfiguration(from: launchConfiguration)
         let configurationFilePath = provider.configurationFilePath
-        try transaction.applyTemporaryConfiguration(temporaryConfiguration, at: configurationFilePath)
+        let mergedConfiguration = try transaction.applyTemporaryConfiguration(temporaryConfiguration, at: configurationFilePath)
+        let launchEnvironment = [provider.apiKeyEnvironmentVariableName: launchConfiguration.providerAPIKey]
 
         do {
-            try launcher.launchApplication(bundleIdentifier: provider.applicationBundleIdentifier)
+            try await launcher.launchApplication(
+                bundleIdentifier: provider.applicationBundleIdentifier,
+                environmentVariables: launchEnvironment
+            )
         } catch {
-            try? transaction.restoreOriginalConfiguration(at: configurationFilePath)
             throw error
         }
 
@@ -121,6 +124,6 @@ public final class AgentLaunchCoordinator {
             of: provider.applicationBundleIdentifier,
             timeoutNanoseconds: launchTimeoutNanoseconds
         )
-        try transaction.restoreOriginalConfiguration(at: configurationFilePath)
+        return mergedConfiguration
     }
 }

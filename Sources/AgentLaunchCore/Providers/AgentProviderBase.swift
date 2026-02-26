@@ -5,6 +5,7 @@ public protocol AgentProviderBase: Sendable {
     var providerDisplayName: String { get }
     var applicationBundleIdentifier: String { get }
     var configurationFilePath: URL { get }
+    var apiKeyEnvironmentVariableName: String { get }
 
     func renderTemporaryConfiguration(from launchConfiguration: AgentProxyLaunchConfig) -> String
 }

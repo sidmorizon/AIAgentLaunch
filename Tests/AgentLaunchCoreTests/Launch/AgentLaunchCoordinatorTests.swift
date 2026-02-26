@@ -4,7 +4,7 @@ import XCTest
 
 @MainActor
 final class AgentLaunchCoordinatorTests: XCTestCase {
-    func testLaunchSuccessRestoresAfterLaunchNotification() async throws {
+    func testLaunchSuccessKeepsModifiedConfigurationAfterLaunchNotification() async throws {
         let provider = StubProvider()
         let transaction = SpyConfigTransaction()
         let launcher = StubAgentLauncher()
@@ -17,15 +17,19 @@ final class AgentLaunchCoordinatorTests: XCTestCase {
             launchTimeoutNanoseconds: 1_000_000
         )
 
-        try await coordinator.launchWithTemporaryConfiguration(makeLaunchConfiguration())
+        let mergedConfiguration = try await coordinator.launchWithTemporaryConfiguration(makeLaunchConfiguration())
 
         XCTAssertEqual(transaction.applyCount, 1)
-        XCTAssertEqual(transaction.restoreCount, 1)
+        XCTAssertEqual(transaction.restoreCount, 0)
         XCTAssertEqual(launcher.launchCount, 1)
+        XCTAssertEqual(launcher.lastEnvironmentVariables?["OPENAI_API_KEY"], "sk-test")
         XCTAssertEqual(eventSource.waitCount, 1)
+        XCTAssertFalse(transaction.lastTemporaryConfiguration?.contains("api_key =") == true)
+        XCTAssertFalse(transaction.lastTemporaryConfiguration?.contains("sk-test") == true)
+        XCTAssertEqual(mergedConfiguration, transaction.mergedConfigurationToReturn)
     }
 
-    func testLaunchFailureStillRestores() async throws {
+    func testLaunchFailureDoesNotRestoreModifiedConfiguration() async throws {
         let provider = StubProvider()
         let transaction = SpyConfigTransaction()
         let launcher = StubAgentLauncher(shouldThrow: true)
@@ -39,18 +43,18 @@ final class AgentLaunchCoordinatorTests: XCTestCase {
         )
 
         do {
-            try await coordinator.launchWithTemporaryConfiguration(makeLaunchConfiguration())
+            _ = try await coordinator.launchWithTemporaryConfiguration(makeLaunchConfiguration())
             XCTFail("Expected launch error")
         } catch is StubLaunchError {
             XCTAssertEqual(transaction.applyCount, 1)
-            XCTAssertEqual(transaction.restoreCount, 1)
+            XCTAssertEqual(transaction.restoreCount, 0)
             XCTAssertEqual(eventSource.waitCount, 0)
         } catch {
             XCTFail("Unexpected error: \(error)")
         }
     }
 
-    func testLaunchRestoreFallbackTimeout() async throws {
+    func testLaunchTimeoutPathKeepsModifiedConfiguration() async throws {
         let provider = StubProvider()
         let transaction = SpyConfigTransaction()
         let launcher = StubAgentLauncher()
@@ -63,10 +67,10 @@ final class AgentLaunchCoordinatorTests: XCTestCase {
             launchTimeoutNanoseconds: 2_000_000
         )
 
-        try await coordinator.launchWithTemporaryConfiguration(makeLaunchConfiguration())
+        _ = try await coordinator.launchWithTemporaryConfiguration(makeLaunchConfiguration())
 
         XCTAssertEqual(transaction.applyCount, 1)
-        XCTAssertEqual(transaction.restoreCount, 1)
+        XCTAssertEqual(transaction.restoreCount, 0)
         XCTAssertEqual(eventSource.waitCount, 1)
     }
 
@@ -85,6 +89,7 @@ private struct StubProvider: AgentProviderBase {
     let providerDisplayName = "Stub"
     let applicationBundleIdentifier = "com.example.stub"
     let configurationFilePath = URL(fileURLWithPath: "/tmp/stub-config.toml")
+    let apiKeyEnvironmentVariableName = "OPENAI_API_KEY"
 
     func renderTemporaryConfiguration(from launchConfiguration: AgentProxyLaunchConfig) -> String {
         AgentConfigRenderer().renderTemporaryConfiguration(from: launchConfiguration)
@@ -94,9 +99,15 @@ private struct StubProvider: AgentProviderBase {
 private final class SpyConfigTransaction: ConfigurationTransactionHandling {
     private(set) var applyCount = 0
     private(set) var restoreCount = 0
+    private(set) var lastTemporaryConfiguration: String?
+    let mergedConfigurationToReturn = """
+    profile = "merged"
+    """
 
-    func applyTemporaryConfiguration(_ temporaryConfiguration: String, at configurationFilePath: URL) throws {
+    func applyTemporaryConfiguration(_ temporaryConfiguration: String, at configurationFilePath: URL) throws -> String {
         applyCount += 1
+        lastTemporaryConfiguration = temporaryConfiguration
+        return mergedConfigurationToReturn
     }
 
     func restoreOriginalConfiguration(at configurationFilePath: URL) throws {
@@ -110,14 +121,16 @@ private enum StubLaunchError: Error {
 
 private final class StubAgentLauncher: AgentLaunching {
     private(set) var launchCount = 0
+    private(set) var lastEnvironmentVariables: [String: String]?
     private let shouldThrow: Bool
 
     init(shouldThrow: Bool = false) {
         self.shouldThrow = shouldThrow
     }
 
-    func launchApplication(bundleIdentifier: String) throws {
+    func launchApplication(bundleIdentifier: String, environmentVariables: [String: String]) async throws {
         launchCount += 1
+        lastEnvironmentVariables = environmentVariables
         if shouldThrow {
             throw StubLaunchError.failed
         }

@@ -1,5 +1,6 @@
 import Foundation
 import LocalAuthentication
+import Security
 
 public protocol BiometryCapabilityChecking: Sendable {
     var isBiometryAvailable: Bool { get }
@@ -41,12 +42,23 @@ public final class KeychainService {
         guard let keyData = key.data(using: .utf8) else {
             throw KeychainAPIError.stringEncodingFailed
         }
-        try keychainAPI.upsertGenericPassword(
-            account: account,
-            service: service,
-            value: keyData,
-            authPolicy: resolvePolicy()
-        )
+        let preferredPolicy = resolvePolicy()
+
+        do {
+            try keychainAPI.upsertGenericPassword(
+                account: account,
+                service: service,
+                value: keyData,
+                authPolicy: preferredPolicy
+            )
+        } catch KeychainAPIError.unexpectedStatus(errSecMissingEntitlement) {
+            try keychainAPI.upsertGenericPassword(
+                account: account,
+                service: service,
+                value: keyData,
+                authPolicy: .none
+            )
+        }
     }
 
     public func readAPIKey() throws -> String {

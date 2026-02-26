@@ -5,8 +5,9 @@ public enum AgentLauncherError: Error, Equatable {
     case failedToLaunch(bundleIdentifier: String)
 }
 
+@MainActor
 public protocol AgentLaunching {
-    func launchApplication(bundleIdentifier: String) throws
+    func launchApplication(bundleIdentifier: String, environmentVariables: [String: String]) async throws
 }
 
 public struct AgentLauncher: AgentLaunching {
@@ -16,16 +17,26 @@ public struct AgentLauncher: AgentLaunching {
         self.workspace = workspace
     }
 
-    public func launchApplication(bundleIdentifier: String) throws {
-        let didLaunch = workspace.launchApplication(
-            withBundleIdentifier: bundleIdentifier,
-            options: [],
-            additionalEventParamDescriptor: nil,
-            launchIdentifier: nil
-        )
-
-        guard didLaunch else {
+    public func launchApplication(bundleIdentifier: String, environmentVariables: [String: String]) async throws {
+        guard let applicationURL = workspace.urlForApplication(withBundleIdentifier: bundleIdentifier) else {
             throw AgentLauncherError.failedToLaunch(bundleIdentifier: bundleIdentifier)
+        }
+
+        let configuration = NSWorkspace.OpenConfiguration()
+        if !environmentVariables.isEmpty {
+            var mergedEnvironment = ProcessInfo.processInfo.environment
+            mergedEnvironment.merge(environmentVariables) { _, injectedValue in injectedValue }
+            configuration.environment = mergedEnvironment
+        }
+
+        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+            workspace.openApplication(at: applicationURL, configuration: configuration) { _, error in
+                if let error {
+                    continuation.resume(throwing: error)
+                    return
+                }
+                continuation.resume(returning: ())
+            }
         }
     }
 }

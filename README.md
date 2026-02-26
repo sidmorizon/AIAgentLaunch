@@ -39,6 +39,7 @@ make dev
 
 - API Key 存储在 Keychain，不落盘到 `UserDefaults`。
 - Keychain 访问策略优先生物识别（`biometryCurrentSet`），不可用时降级为 `userPresence`。
+- 当运行环境缺少受保护 Keychain 所需 entitlement（常见于 `swift run`）时，会自动降级为 `kSecAttrAccessibleWhenUnlockedThisDeviceOnly` 存储以避免 `OSStatus -34018`。
 - 代理启动流程会临时写入 Provider 配置（当前为 Codex `~/.codex/config.toml`），随后在应用启动通知或超时路径中自动恢复原始配置。
 
 ## Current Scope And Known Limitations

@@ -41,6 +41,46 @@ final class ModelDiscoveryServiceTests: XCTestCase {
         }
     }
 
+    func testFetchModelsMaps403ToForbiddenError() async throws {
+        let networking = StubModelDiscoveryNetworking { request in
+            let response = HTTPURLResponse(url: request.url!, statusCode: 403, httpVersion: nil, headerFields: nil)!
+            return (Data(), response)
+        }
+        let service = ModelDiscoveryService(networking: networking)
+
+        do {
+            _ = try await service.fetchModels(
+                apiBaseURL: URL(string: "https://example.com/v1")!,
+                providerAPIKey: "sk-test"
+            )
+            XCTFail("Expected forbidden error")
+        } catch let error as ModelDiscoveryServiceError {
+            XCTAssertEqual(error, .forbidden)
+        } catch {
+            XCTFail("Unexpected error: \(error)")
+        }
+    }
+
+    func testFetchModelsMaps404ToNotFoundError() async throws {
+        let networking = StubModelDiscoveryNetworking { request in
+            let response = HTTPURLResponse(url: request.url!, statusCode: 404, httpVersion: nil, headerFields: nil)!
+            return (Data(), response)
+        }
+        let service = ModelDiscoveryService(networking: networking)
+
+        do {
+            _ = try await service.fetchModels(
+                apiBaseURL: URL(string: "https://example.com/v1")!,
+                providerAPIKey: "sk-test"
+            )
+            XCTFail("Expected not found error")
+        } catch let error as ModelDiscoveryServiceError {
+            XCTAssertEqual(error, .notFound)
+        } catch {
+            XCTFail("Unexpected error: \(error)")
+        }
+    }
+
     func testFetchModelsMapsInvalidJSONToDecodeError() async throws {
         let networking = StubModelDiscoveryNetworking { request in
             let response = HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!
@@ -59,6 +99,21 @@ final class ModelDiscoveryServiceTests: XCTestCase {
         } catch {
             XCTFail("Unexpected error: \(error)")
         }
+    }
+
+    func testFetchModelsAppendsV1ModelsWhenBaseURLHasNoVersionPath() async throws {
+        let networking = StubModelDiscoveryNetworking { request in
+            XCTAssertEqual(request.url?.absoluteString, "https://example.com/v1/models")
+            let response = HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!
+            let body = Data("{\"data\":[{\"id\":\"gpt-5\"}]}".utf8)
+            return (body, response)
+        }
+        let service = ModelDiscoveryService(networking: networking)
+
+        _ = try await service.fetchModels(
+            apiBaseURL: URL(string: "https://example.com")!,
+            providerAPIKey: "sk-test"
+        )
     }
 }
 
