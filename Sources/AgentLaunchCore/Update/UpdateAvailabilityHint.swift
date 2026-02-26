@@ -1,5 +1,13 @@
 import Foundation
 
+public enum UpdateAvailabilityTone: Equatable {
+    case neutral
+    case info
+    case success
+    case warning
+    case error
+}
+
 public enum UpdateAvailabilityHint: Equatable {
     case idle
     case checking
@@ -12,17 +20,28 @@ public enum UpdateAvailabilityHint: Equatable {
         case .idle:
             return nil
         case .checking:
-            return "正在检查新版本…"
-        case let .updateAvailable(version):
-            let normalizedVersion = version.trimmingCharacters(in: .whitespacesAndNewlines)
-            if normalizedVersion.isEmpty {
-                return "发现新版本"
-            }
-            return "发现新版本 v\(normalizedVersion)"
+            return "正在检查更新…"
+        case .updateAvailable:
+            return "有新版本可升级"
         case .upToDate:
-            return "当前已是最新版本"
+            return "已是最新版本"
         case .failed:
-            return "未能获取更新信息"
+            return "检测失败，请稍后再试"
+        }
+    }
+
+    public var tone: UpdateAvailabilityTone {
+        switch self {
+        case .idle:
+            return .neutral
+        case .checking:
+            return .info
+        case .updateAvailable:
+            return .warning
+        case .upToDate:
+            return .success
+        case .failed:
+            return .error
         }
     }
 

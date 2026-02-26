@@ -97,11 +97,7 @@ struct MenuBarContentView: View {
                         if let updateHintText = sparkleUpdaterController.updateHintText {
                             Text(updateHintText)
                                 .font(.caption2)
-                                .foregroundStyle(
-                                    sparkleUpdaterController.hasAvailableUpdate
-                                        ? Color(red: 0.85, green: 0.44, blue: 0.05)
-                                        : .secondary
-                                )
+                                .foregroundStyle(updateHintColor(for: sparkleUpdaterController.updateHintTone))
                                 .lineLimit(1)
                         }
                     }
@@ -356,5 +352,20 @@ struct MenuBarContentView: View {
         Text(text)
             .font(.caption2)
             .foregroundStyle(Color(red: 0.63, green: 0.14, blue: 0.12))
+    }
+
+    private func updateHintColor(for tone: UpdateAvailabilityTone) -> Color {
+        switch tone {
+        case .neutral:
+            return .secondary
+        case .info:
+            return Color(red: 0.13, green: 0.48, blue: 0.84)
+        case .success:
+            return Color(red: 0.12, green: 0.54, blue: 0.30)
+        case .warning:
+            return Color(red: 0.82, green: 0.43, blue: 0.08)
+        case .error:
+            return Color(red: 0.70, green: 0.16, blue: 0.14)
+        }
     }
 }

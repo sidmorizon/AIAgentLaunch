@@ -24,6 +24,15 @@ final class MenuBarContentViewSourceLayoutTests: XCTestCase {
         )
     }
 
+    func testCheckForUpdatesMenuItemUsesStableActionLabel() throws {
+        let source = try String(contentsOf: menuBarContentViewSourceURL(), encoding: .utf8)
+
+        XCTAssertTrue(
+            source.contains("Text(\"检测升级\")"),
+            "Update menu entry label should remain stable and descriptive."
+        )
+    }
+
     private func menuBarContentViewSourceURL() -> URL {
         URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent() // UI

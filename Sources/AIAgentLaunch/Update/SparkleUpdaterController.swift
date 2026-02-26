@@ -5,6 +5,12 @@ import Sparkle
 
 @MainActor
 final class SparkleUpdaterController: NSObject, ObservableObject {
+    private enum SparkleErrorCode {
+        static let noUpdate = 1001 // SUNoUpdateError
+        static let installationCanceled = 4007 // SUInstallationCanceledError
+        static let installationAuthorizeLater = 4008 // SUInstallationAuthorizeLaterError
+    }
+
     private var updaterController: SPUStandardUpdaterController?
     @Published private(set) var updateHint: UpdateAvailabilityHint = .idle
 
@@ -20,8 +26,8 @@ final class SparkleUpdaterController: NSObject, ObservableObject {
         updateHint.inlineText
     }
 
-    var hasAvailableUpdate: Bool {
-        updateHint.hasUpdate
+    var updateHintTone: UpdateAvailabilityTone {
+        updateHint.tone
     }
 
     init(bundle: Bundle = .main) {
@@ -98,17 +104,51 @@ extension SparkleUpdaterController: SPUUpdaterDelegate {
         updateHint = .updateAvailable(version: item.displayVersionString)
     }
 
+    func updaterDidNotFindUpdate(_ updater: SPUUpdater) {
+        updateHint = .upToDate
+    }
+
     func updaterDidNotFindUpdate(_ updater: SPUUpdater, error _: Error) {
         updateHint = .upToDate
     }
 
-    func updater(_ updater: SPUUpdater, didAbortWithError _: Error) {
+    func updater(_ updater: SPUUpdater, didAbortWithError error: Error) {
+        if isNoUpdateError(error) {
+            updateHint = .upToDate
+            return
+        }
+        if isUserDeferredInstallationError(error) {
+            return
+        }
         updateHint = .failed
     }
 
     func updater(_ updater: SPUUpdater, didFinishUpdateCycleFor _: SPUUpdateCheck, error: Error?) {
-        if error != nil, case .checking = updateHint {
+        guard let error else {
+            return
+        }
+        if isNoUpdateError(error) {
+            updateHint = .upToDate
+            return
+        }
+        if isUserDeferredInstallationError(error) {
+            return
+        }
+        if case .checking = updateHint {
             updateHint = .failed
         }
+    }
+
+    private func isNoUpdateError(_ error: Error) -> Bool {
+        let nsError = error as NSError
+        return nsError.domain == SUSparkleErrorDomain && nsError.code == SparkleErrorCode.noUpdate
+    }
+
+    private func isUserDeferredInstallationError(_ error: Error) -> Bool {
+        let nsError = error as NSError
+        guard nsError.domain == SUSparkleErrorDomain else {
+            return false
+        }
+        return nsError.code == SparkleErrorCode.installationCanceled || nsError.code == SparkleErrorCode.installationAuthorizeLater
     }
 }
