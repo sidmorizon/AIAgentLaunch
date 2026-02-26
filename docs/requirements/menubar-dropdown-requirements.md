@@ -1,22 +1,22 @@
-# Codex 菜单栏下拉功能需求文档（V1）
+# Agent 菜单栏下拉功能需求文档（V1）
 
 ## 1. 背景与目标
 - 目标产品：macOS 菜单栏常驻应用（Menu Bar App）。
-- 当前仅支持启动 Codex App Mac 桌面版。
-- 目标能力：在菜单栏下拉中完成模式切换、API 代理配置、模型拉取、思考强度选择，并启动 Codex。
+- 当前支持启动 Codex App 与 Claude Desktop。
+- 目标能力：在菜单栏下拉中完成模式切换、API 代理配置、模型拉取、思考强度选择，并启动目标 Agent（CODEX/CLAUDE）。
 
 ## 2. 需求范围
 - 本文仅覆盖“点击工具栏图标后，下拉界面”的功能。
 - 不包含多平台支持。
-- 不包含其他 AI 客户端支持。
+- 不包含 Codex/Claude 之外的其他 AI 客户端支持。
 
 ## 3. 用户流程
 1. 用户点击菜单栏图标，打开下拉面板。
 2. 用户选择模式：原版 或 API 代理版。
-3. 若为原版，用户可直接点击“启动 Codex”。
+3. 若为原版，用户可直接点击“启动 CODEX”或“启动 CLAUDE”。
 4. 若为 API 代理版，用户输入 BaseUrl、APIKey，点击“测试”。
 5. 测试成功后自动拉取模型列表，用户选择模型与思考强度。
-6. 用户点击“启动 Codex”。
+6. 用户点击“启动 CODEX”或“启动 CLAUDE”。
 
 ## 4. 功能需求
 
@@ -46,17 +46,26 @@
 - 思考强度选项：minimal、low、medium、high（默认 medium）。
 - 依赖关系：模型未加载前，模型下拉与思考强度置灰。
 
-### 4.5 启动 Codex
-- 按钮：启动 Codex。
-- 原版模式：直接启动已安装的 Codex App。
-- API 代理版模式：使用当前 BaseUrl、APIKey、模型、思考强度作为启动配置后再启动。
+### 4.5 启动 Agent
+- 按钮：启动 CODEX、启动 CLAUDE（并排双按钮）。
+- 原版模式：
+  - CODEX：直接启动已安装的 Codex App。
+  - CLAUDE：直接启动已安装的 Claude Desktop。
+- API 代理版模式：
+  - CODEX：使用当前 BaseUrl、APIKey、模型、思考强度作为启动配置后再启动（含 Codex 配置事务）。
+  - CLAUDE：使用当前 BaseUrl、APIKey、模型、思考强度生成环境变量注入后再启动（Env-Only，不读写 Claude 本地配置文件）。
 - 按钮可用性：
-  - 原版：始终可点击。
-  - API 代理版：需 BaseUrl、APIKey、模型都有效后可点击。
+  - 原版：对应 Agent 已安装时可点击。
+  - API 代理版：对应 Agent 已安装，且 BaseUrl、APIKey、模型都有效后可点击。
+
+### 4.6 启动日志查看
+- 保留“查看 Agent 启动日志”入口。
+- CODEX：展示本次启动相关配置文本。
+- CLAUDE：展示本次注入环境变量快照，敏感值需脱敏展示。
 
 ## 5. 交互与状态要求
 - 状态：idle、testing、testSuccess、testFailed、launching、launchFailed。
-- testing/launching 状态下按钮显示 loading，避免重复点击。
+- testing/launching 状态下按钮显示 loading，避免重复点击；双启动按钮需独立展示 loading 状态。
 - 错误提示需可读、可重试，不得静默失败。
 
 ## 6. 输入校验
@@ -69,11 +78,12 @@
 1. 下拉面板可切换原版/API 代理版，显示逻辑正确。
 2. API 代理版可输入 BaseUrl/APIKey 并执行测试。
 3. 测试成功后可自动加载模型列表并可选择思考强度。
-4. 启动按钮启用/禁用逻辑符合规则。
+4. CODEX/CLAUDE 两个启动按钮启用/禁用逻辑符合规则。
 5. 任一失败场景有明确错误提示且可重试。
-6. 原版与 API 代理版均可触发启动 Codex。
+6. 原版与 API 代理版均可触发启动 CODEX 与 CLAUDE。
+7. CLAUDE 启动路径不读取或改写 `claude_desktop_config.json`。
 
 ## 8. 非目标（V1 不做）
-- 多客户端支持（除 Codex 外）。
+- 多客户端支持（除 CODEX、CLAUDE 外）。
 - 高级代理规则（多 BaseUrl 路由、模型映射策略）。
 - 历史配置管理与多配置档切换。

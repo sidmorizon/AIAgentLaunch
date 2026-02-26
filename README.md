@@ -1,6 +1,6 @@
 # AIAgentLaunch
 
-macOS 顶部菜单栏 Agent 启动器，支持原版启动与 API 代理启动两种模式。
+macOS 顶部菜单栏 Agent 启动器，支持 CODEX / CLAUDE 两个目标，并支持原版启动与 API 代理启动两种模式。
 
 ## Requirements
 
@@ -40,6 +40,7 @@ make test
   - `SPARKLE_PRIVATE_ED_KEY`：用于签名 dmg 并写入 `sparkle:edSignature`。
 - 菜单栏界面会读取版本并展示 `v<version>`。
 - 应用内“检测升级”由 Sparkle 处理，依赖发布产物中的 `appcast.xml` 与 dmg 资产。
+- 仅 CI Release 流程打包的安装包会启用升级检测；本地开发构建点击“检测升级”会提示开发环境不支持。
 
 ## Dev Watch Mode
 
@@ -54,10 +55,14 @@ make dev
 - API Key 存储在 Keychain，不落盘到 `UserDefaults`。
 - Keychain 访问策略优先生物识别（`biometryCurrentSet`），不可用时降级为 `userPresence`。
 - 当运行环境缺少受保护 Keychain 所需 entitlement（常见于 `swift run`）时，会自动降级为 `kSecAttrAccessibleWhenUnlockedThisDeviceOnly` 存储以避免 `OSStatus -34018`。
-- 代理启动流程会临时写入 Provider 配置（当前为 Codex `~/.codex/config.toml`），随后在应用启动通知或超时路径中自动恢复原始配置。
+- CODEX 的代理启动流程会临时写入 `~/.codex/config.toml`，随后在应用启动通知或超时路径中自动恢复原始配置。
+- CLAUDE 的启动流程为 Env-Only：仅在启动进程时注入环境变量，不读取也不改写 `claude_desktop_config.json`。
 
 ## Current Scope And Known Limitations
 
-- 当前仅内置 Codex Provider（`com.openai.codex`）。
+- 当前内置目标：
+  - CODEX（`com.openai.codex`）
+  - CLAUDE Desktop（`com.anthropic.claudefordesktop`）
+- CLAUDE 代理模式会注入兼容环境变量（如 `ANTHROPIC_API_KEY`、`OPENAI_API_KEY`、`ANTHROPIC_BASE_URL`、`OPENAI_BASE_URL` 等）；部分非官方键可能被客户端忽略。
 - 模型配置写入使用占位字段映射，后续可按 Provider 的真实字段做细化校对。
 - 菜单栏输入状态（Base URL、API Key、Model）当前不做持久化。

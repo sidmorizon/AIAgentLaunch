@@ -11,7 +11,29 @@ final class SparkleUpdaterController: NSObject, ObservableObject {
         static let installationAuthorizeLater = 4008 // SUInstallationAuthorizeLaterError
     }
 
+    private enum MetadataKey {
+        static let ciReleaseUpdateCheckEnabled = "AIAgentLaunchEnableUpdateChecks"
+    }
+
+    private enum UpdateCheckAvailability: Equatable {
+        case enabled
+        case developmentBuild
+        case ciReleaseMisconfigured
+
+        var manualCheckFailureReason: String {
+            switch self {
+            case .enabled:
+                return "更新服务暂时不可用，请稍后重试。"
+            case .developmentBuild:
+                return "开发环境不支持检测，请使用 CI 发布安装包进行升级检测。"
+            case .ciReleaseMisconfigured:
+                return "当前安装包未正确配置升级能力，请重新下载安装最新版本后重试。"
+            }
+        }
+    }
+
     private var updaterController: SPUStandardUpdaterController?
+    private let updateCheckAvailability: UpdateCheckAvailability
     @Published private(set) var updateHint: UpdateAvailabilityHint = .idle
 
     var isConfigured: Bool {
@@ -32,9 +54,20 @@ final class SparkleUpdaterController: NSObject, ObservableObject {
 
     init(bundle: Bundle = .main) {
         updaterController = nil
+        let infoDictionary = bundle.infoDictionary ?? [:]
+        let isCIReleaseBuild = Self.isCIReleaseBuild(infoDictionary: infoDictionary)
+
+        if isCIReleaseBuild {
+            updateCheckAvailability = SparkleConfiguration.canEnableUpdater(infoDictionary: infoDictionary)
+                ? .enabled
+                : .ciReleaseMisconfigured
+        } else {
+            updateCheckAvailability = .developmentBuild
+        }
+
         super.init()
 
-        guard SparkleConfiguration.canEnableUpdater(infoDictionary: bundle.infoDictionary ?? [:]) else {
+        guard updateCheckAvailability == .enabled else {
             updaterController = nil
             return
         }
@@ -55,9 +88,7 @@ final class SparkleUpdaterController: NSObject, ObservableObject {
     func checkForUpdates() {
         guard let updater = updaterController?.updater else {
             updateHint = .failed
-            presentManualCheckFailureAlert(
-                reason: "当前安装包未正确配置升级能力，请重新下载安装最新版本后重试。"
-            )
+            presentManualCheckFailureAlert(reason: updateCheckAvailability.manualCheckFailureReason)
             return
         }
         guard updater.canCheckForUpdates else {
@@ -96,6 +127,24 @@ final class SparkleUpdaterController: NSObject, ObservableObject {
         alert.alertStyle = .warning
         alert.addButton(withTitle: "确定")
         alert.runModal()
+    }
+
+    private static func isCIReleaseBuild(infoDictionary: [String: Any]) -> Bool {
+        guard let rawValue = infoDictionary[MetadataKey.ciReleaseUpdateCheckEnabled] else {
+            return false
+        }
+
+        if let boolValue = rawValue as? Bool {
+            return boolValue
+        }
+        if let numberValue = rawValue as? NSNumber {
+            return numberValue.boolValue
+        }
+        if let stringValue = rawValue as? String {
+            let normalized = stringValue.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+            return normalized == "1" || normalized == "true" || normalized == "yes" || normalized == "on"
+        }
+        return false
     }
 }
 

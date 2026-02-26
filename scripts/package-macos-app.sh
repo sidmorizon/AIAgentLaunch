@@ -7,6 +7,7 @@ VERSION="${1:-}"
 REPOSITORY="${2:-${AIAgentLaunch_GITHUB_REPOSITORY:-}}"
 SPARKLE_PUBLIC_ED_KEY="${SPARKLE_PUBLIC_ED_KEY:-}"
 REQUIRE_SPARKLE_PUBLIC_KEY="${REQUIRE_SPARKLE_PUBLIC_KEY:-0}"
+ENABLE_UPDATE_CHECKS="${ENABLE_UPDATE_CHECKS:-0}"
 ARM64_TRIPLE="arm64-apple-macosx14.0"
 X86_64_TRIPLE="x86_64-apple-macosx14.0"
 ICON_SOURCE_PATH="Resources/AppIcon.icns"
@@ -91,6 +92,15 @@ BLOCK
 )
 fi
 
+UPDATE_CHECKS_BLOCK=""
+if [[ "$ENABLE_UPDATE_CHECKS" == "1" ]]; then
+  UPDATE_CHECKS_BLOCK=$(cat <<BLOCK
+    <key>AIAgentLaunchEnableUpdateChecks</key>
+    <string>1</string>
+BLOCK
+)
+fi
+
 ICON_BLOCK=""
 if [[ -f "$ICON_SOURCE_PATH" ]]; then
   cp "$ICON_SOURCE_PATH" "$CONTENTS_DIR/Resources/AppIcon.icns"
@@ -128,6 +138,7 @@ cat > "$CONTENTS_DIR/Info.plist" <<EOF_PLIST
     <true/>
     <key>SUEnableAutomaticChecks</key>
     <false/>
+$UPDATE_CHECKS_BLOCK
 $SU_FEED_BLOCK
 $SPARKLE_PUBLIC_KEY_BLOCK
 $ICON_BLOCK

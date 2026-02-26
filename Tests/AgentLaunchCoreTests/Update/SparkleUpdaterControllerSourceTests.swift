@@ -37,6 +37,28 @@ final class SparkleUpdaterControllerSourceTests: XCTestCase {
         )
     }
 
+    func testDevelopmentBuildManualCheckShowsUnsupportedMessage() throws {
+        let source = try String(contentsOf: sparkleUpdaterControllerSourceURL(), encoding: .utf8)
+
+        XCTAssertTrue(
+            source.contains("开发环境不支持检测"),
+            "Development builds should show a clear unsupported message for manual update checks."
+        )
+    }
+
+    func testInitializationRequiresCIBuildUpdateCheckMarker() throws {
+        let source = try String(contentsOf: sparkleUpdaterControllerSourceURL(), encoding: .utf8)
+
+        XCTAssertTrue(
+            source.contains("AIAgentLaunchEnableUpdateChecks"),
+            "Updater should require a CI build marker key before enabling Sparkle checks."
+        )
+        XCTAssertTrue(
+            source.contains("isCIReleaseBuild"),
+            "Updater initialization should gate Sparkle setup behind CI-release detection."
+        )
+    }
+
     private func sparkleUpdaterControllerSourceURL() -> URL {
         URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent() // Update

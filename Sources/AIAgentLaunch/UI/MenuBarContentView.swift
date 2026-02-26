@@ -6,78 +6,66 @@ import SwiftUI
 struct MenuBarContentView: View {
     @StateObject private var viewModel: MenuBarViewModel
     @StateObject private var sparkleUpdaterController: SparkleUpdaterController
-    @State private var isShowingLaunchConfigPreview = false
+    @ObservedObject private var launchConfigPreviewWindowController: LaunchConfigPreviewWindowController
     private let appVersion: String
 
     init(
         viewModel: MenuBarViewModel = MenuBarViewModel(),
         sparkleUpdaterController: SparkleUpdaterController = SparkleUpdaterController(),
+        launchConfigPreviewWindowController: LaunchConfigPreviewWindowController = LaunchConfigPreviewWindowController(),
         appVersion: String = AppVersionProvider().currentVersion()
     ) {
         _viewModel = StateObject(wrappedValue: viewModel)
         _sparkleUpdaterController = StateObject(wrappedValue: sparkleUpdaterController)
+        _launchConfigPreviewWindowController = ObservedObject(wrappedValue: launchConfigPreviewWindowController)
         self.appVersion = appVersion
     }
 
-    var body: some View {
-        ZStack {
-            VStack(alignment: .leading, spacing: 14) {
-                headerSection
-
-                modeSection
-
-                if viewModel.mode == .proxy {
-                    proxyConfigurationSection
-                }
-
-                launchSection
-
-                if let statusMessage = viewModel.statusMessage {
-                    statusBanner(message: statusMessage)
-                }
+    private var modeBinding: Binding<LaunchMode> {
+        Binding(
+            get: { viewModel.mode },
+            set: { newMode in
+                guard viewModel.mode != newMode else { return }
+                // Avoid AppKit constraint crashes when removing focused fields during segmented transitions.
+                NSApplication.shared.keyWindow?.makeFirstResponder(nil)
+                viewModel.mode = newMode
             }
-            .padding(14)
-            .frame(width: 372)
-            .background(
-                RoundedRectangle(cornerRadius: 16, style: .continuous)
-                    .fill(
-                        LinearGradient(
-                            colors: [
-                                Color(red: 0.96, green: 0.98, blue: 1.00),
-                                Color(red: 0.93, green: 0.96, blue: 0.99)
-                            ],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        )
-                    )
-            )
+        )
+    }
 
-            if isShowingLaunchConfigPreview {
-                Color.black.opacity(0.12)
-                    .ignoresSafeArea()
-                    .onTapGesture {
-                        isShowingLaunchConfigPreview = false
-                    }
+    var body: some View {
+        MenuBarPanel {
+            headerSection
+            modeSection
 
-                launchConfigPreviewOverlay
-                    .padding(10)
-                    .transition(.opacity.combined(with: .scale(scale: 0.98)))
+            if viewModel.mode == .proxy {
+                proxyConfigurationSection
+            }
+
+            launchSection
+
+            if let statusMessage = viewModel.statusMessage {
+                statusBanner(message: statusMessage)
             }
         }
-        .animation(.easeInOut(duration: 0.16), value: isShowingLaunchConfigPreview)
         .task(id: viewModel.mode) {
             await viewModel.handlePanelPresented()
             sparkleUpdaterController.checkForUpdateInformationSilently()
         }
-        .onChange(of: viewModel.canInspectLastLaunchConfigTOML) { _, canInspect in
+        .onChange(of: viewModel.canInspectLastLaunchLogText) { _, canInspect in
             if !canInspect {
-                isShowingLaunchConfigPreview = false
+                launchConfigPreviewWindowController.close()
             }
         }
     }
 
     private var headerSection: some View {
-        HStack(spacing: 8) {
+        HStack(spacing: 10) {
+            Image(systemName: "bolt.circle.fill")
+                .font(.title2)
+                .symbolRenderingMode(.hierarchical)
+                .foregroundStyle(Color.accentColor)
+
             VStack(alignment: .leading, spacing: 2) {
                 Text("AIAgentLaunch")
                     .font(.headline.weight(.semibold))
@@ -112,8 +100,8 @@ struct MenuBarContentView: View {
                     Image(systemName: "chevron.down")
                         .font(.caption.weight(.semibold))
                 }
-                    .foregroundStyle(Color(red: 0.11, green: 0.52, blue: 0.84))
-                    .padding(4)
+                .foregroundStyle(.secondary)
+                .padding(4)
             }
             .menuIndicator(.hidden)
             .menuStyle(.borderlessButton)
@@ -123,88 +111,71 @@ struct MenuBarContentView: View {
     }
 
     private var modeSection: some View {
-        HStack(spacing: 8) {
-            modeOptionButton(
-                mode: .proxy,
-                title: "API 代理版"
-            )
-            modeOptionButton(
-                mode: .original,
-                title: "原版"
-            )
-        }
-    }
-
-    private func modeOptionButton(mode: LaunchMode, title: String) -> some View {
-        let isSelected = viewModel.mode == mode
-
-        return Button {
-            // Avoid AppKit constraint crashes when removing focused fields during animated transitions.
-            NSApplication.shared.keyWindow?.makeFirstResponder(nil)
-            viewModel.mode = mode
-        } label: {
-            HStack(spacing: 6) {
-                Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
-                    .font(.caption)
-                Text(title)
-                    .font(.subheadline.weight(.semibold))
+        VStack(alignment: .leading, spacing: MenuBarUITokens.fieldSpacing) {
+            Picker("启动模式", selection: modeBinding) {
+                Text("API 代理版")
+                    .tag(LaunchMode.proxy)
+                Text("原版")
+                    .tag(LaunchMode.original)
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.horizontal, 10)
-            .padding(.vertical, 10)
-            .background(
-                RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .fill(isSelected ? Color(red: 0.79, green: 0.91, blue: 1.00) : Color.white.opacity(0.75))
+            .pickerStyle(.segmented)
+            .labelsHidden()
+            .frame(maxWidth: .infinity)
+
+            Text(
+                viewModel.mode == .proxy
+                    ? "通过自定义 Base URL、API Key 启动"
+                    : "通过默认配置启动，使用你的个人订阅账号"
             )
-            .overlay(
-                RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .stroke(isSelected ? Color(red: 0.11, green: 0.52, blue: 0.84) : Color.gray.opacity(0.25), lineWidth: isSelected ? 1.5 : 1)
-            )
+            .font(.caption)
+            .foregroundStyle(Color.primary.opacity(0.68))
+            .frame(maxWidth: .infinity, alignment: .center)
+            .multilineTextAlignment(.center)
         }
-        .buttonStyle(.plain)
     }
 
     private var proxyConfigurationSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            VStack(alignment: .leading, spacing: 6) {
-                fieldLabel("Base URL")
+        visualGroupSection {
+            MenuBarField("BASE URL") {
                 TextField("https://api.example.com/v1", text: $viewModel.baseURLText)
                     .textFieldStyle(.roundedBorder)
                 if let validation = viewModel.baseURLValidationMessage {
-                    validationText(validation)
+                    MenuBarValidationText(text: validation)
                 }
             }
 
-            VStack(alignment: .leading, spacing: 6) {
-                fieldLabel("API Key")
+            MenuBarField("API KEY") {
                 SecureField("sk-...", text: $viewModel.apiKeyMasked)
                     .textFieldStyle(.roundedBorder)
                 if let validation = viewModel.apiKeyValidationMessage {
-                    validationText(validation)
+                    MenuBarValidationText(text: validation)
                 }
             }
 
             HStack(spacing: 8) {
-                Button(viewModel.isTestingConnection ? "Testing..." : "测试连接") {
+                Button(viewModel.isTestingConnection ? "TESTING..." : "测试连接") {
                     Task {
                         await viewModel.testConnection()
                     }
                 }
                 .buttonStyle(.borderedProminent)
-                .tint(Color(red: 0.11, green: 0.60, blue: 0.60))
+                .controlSize(.regular)
+                .tint(Color(red: 0.08, green: 0.48, blue: 0.92))
                 .disabled(!viewModel.canTestConnection)
 
                 if viewModel.state == .testSuccess {
-                    Label("连接成功", systemImage: "checkmark.seal.fill")
-                        .font(.caption)
-                        .foregroundStyle(Color(red: 0.10, green: 0.56, blue: 0.29))
+                    MenuBarStatusBadge(text: "已连接", tone: .success)
+                } else if viewModel.isTestingConnection {
+                    ProgressView()
+                        .controlSize(.small)
                 }
+
+                Spacer(minLength: 0)
             }
 
             HStack(alignment: .top, spacing: 10) {
-                VStack(alignment: .leading, spacing: 6) {
-                    fieldLabel("模型")
-                    Picker("", selection: $viewModel.selectedModel) {
+                MenuBarField("模型") {
+                    Picker("模型", selection: $viewModel.selectedModel) {
                         if viewModel.models.isEmpty {
                             Text("先测试连接").tag("")
                         } else {
@@ -218,10 +189,14 @@ struct MenuBarContentView: View {
                     .disabled(!viewModel.isModelSelectionEnabled)
                     .frame(maxWidth: .infinity, alignment: .leading)
                 }
+                .layoutPriority(1)
 
-                VStack(alignment: .leading, spacing: 6) {
-                    fieldLabel("思考强度")
-                    Picker("", selection: $viewModel.reasoningLevel) {
+                VStack(alignment: .trailing, spacing: 4) {
+                    Text("思考强度")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+
+                    Picker("思考强度", selection: $viewModel.reasoningLevel) {
                         ForEach(ReasoningEffort.allCases, id: \.self) { effort in
                             Text(effort.rawValue).tag(effort)
                         }
@@ -229,126 +204,97 @@ struct MenuBarContentView: View {
                     .labelsHidden()
                     .pickerStyle(.menu)
                     .disabled(!viewModel.isModelSelectionEnabled)
-                    .frame(maxWidth: .infinity, alignment: .leading)
                 }
+                .fixedSize(horizontal: true, vertical: false)
             }
 
             if viewModel.isModelSelectionEnabled, let validation = viewModel.modelValidationMessage {
-                validationText(validation)
+                MenuBarValidationText(text: validation)
             }
         }
-        .padding(12)
-        .background(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .fill(Color.white.opacity(0.70))
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .stroke(Color.gray.opacity(0.22), lineWidth: 1)
-        )
     }
 
     private var launchSection: some View {
-        Button(viewModel.isLaunching ? "Launching..." : "启动 Codex") {
-            Task {
-                await viewModel.launchSelectedAgent()
+        ZStack {
+            HStack {
+                Spacer(minLength: 0)
+                Button(viewModel.isLaunchingCodex ? "LAUNCHING..." : "启动 CODEX") {
+                    Task {
+                        await viewModel.launchSelectedAgent(.codex)
+                    }
+                }
+                .controlSize(.large)
+                .buttonStyle(.borderedProminent)
+                .tint(Color(red: 0.04, green: 0.45, blue: 0.92))
+                .disabled(!viewModel.canLaunchCodex)
+                .padding(.trailing, 8)
+
+                Button(viewModel.isLaunchingClaude ? "LAUNCHING..." : "启动 CLAUDE") {
+                    Task {
+                        await viewModel.launchSelectedAgent(.claude)
+                    }
+                }
+                .controlSize(.large)
+                .buttonStyle(.borderedProminent)
+                .tint(Color(red: 0.15, green: 0.52, blue: 0.44))
+                .disabled(!viewModel.canLaunchClaude)
+                Spacer(minLength: 0)
+            }
+
+            HStack {
+                Spacer(minLength: 0)
+                if viewModel.canInspectLastLaunchLogText {
+                    Button {
+                        launchConfigPreviewWindowController.present(launchLogText: viewModel.lastLaunchLogText ?? "")
+                    } label: {
+                        Image(systemName: "doc.text.magnifyingglass")
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.regular)
+                    .accessibilityLabel("查看 Agent 启动日志")
+                    .help("查看 Agent 启动日志")
+                }
             }
         }
-        .frame(maxWidth: .infinity)
-        .controlSize(.large)
-        .buttonStyle(.borderedProminent)
-        .tint(
-            viewModel.mode == .proxy
-                ? Color(red: 0.11, green: 0.52, blue: 0.84)
-                : Color(red: 0.20, green: 0.45, blue: 0.80)
+    }
+
+    private func visualGroupSection<Content: View>(@ViewBuilder content: () -> Content) -> some View {
+        VStack(alignment: .leading, spacing: MenuBarUITokens.fieldSpacing) {
+            content()
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(10)
+        .background(
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .fill(Color(red: 0.94, green: 0.95, blue: 0.97).opacity(0.90))
         )
-        .disabled(!viewModel.canLaunch)
+        .overlay(
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .stroke(Color(red: 0.74, green: 0.79, blue: 0.87).opacity(0.42), lineWidth: 1)
+        )
     }
 
     private func statusBanner(message: String) -> some View {
         let isError = viewModel.isStatusError || viewModel.state == .testFailed || viewModel.state == .launchFailed
-        let fgColor = isError
-            ? Color(red: 0.63, green: 0.14, blue: 0.12)
-            : Color(red: 0.17, green: 0.39, blue: 0.17)
+        let tone: MenuBarBadgeTone = isError ? .error : .success
 
         return HStack(alignment: .top, spacing: 8) {
-            Image(systemName: isError ? "exclamationmark.triangle.fill" : "checkmark.circle.fill")
+            Image(systemName: tone.symbolName)
                 .font(.caption)
+                .foregroundStyle(tone.foregroundColor)
                 .padding(.top, 1)
             Text(message)
                 .font(.caption)
+                .foregroundStyle(tone.foregroundColor)
                 .fixedSize(horizontal: false, vertical: true)
-            if viewModel.canInspectLastLaunchConfigTOML {
-                Spacer(minLength: 6)
-                Button {
-                    isShowingLaunchConfigPreview = true
-                } label: {
-                    Image(systemName: "doc.text.magnifyingglass")
-                        .font(.caption)
-                }
-                .buttonStyle(.plain)
-                .help("查看本次启动使用的 config.toml")
-            }
+            Spacer(minLength: 0)
         }
-        .foregroundStyle(fgColor)
         .padding(10)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(
-            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .fill(isError ? Color(red: 1.00, green: 0.92, blue: 0.90) : Color(red: 0.91, green: 0.97, blue: 0.91))
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .fill(tone.backgroundColor.opacity(0.82))
         )
-    }
-
-    private var launchConfigPreviewOverlay: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("本次启动使用的 config.toml")
-                .font(.headline)
-            ScrollView {
-                Text(viewModel.lastLaunchedProxyConfigTOML ?? "")
-                    .font(.system(.caption, design: .monospaced))
-                    .textSelection(.enabled)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(10)
-            }
-            .background(
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .fill(Color.white.opacity(0.85))
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .stroke(Color.gray.opacity(0.25), lineWidth: 1)
-            )
-            HStack {
-                Spacer()
-                Button("关闭") {
-                    isShowingLaunchConfigPreview = false
-                }
-                .keyboardShortcut(.defaultAction)
-            }
-        }
-        .padding(14)
-        .frame(width: 340, height: 320, alignment: .topLeading)
-        .background(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .fill(Color(red: 0.98, green: 0.99, blue: 1.00))
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .stroke(Color.gray.opacity(0.25), lineWidth: 1)
-        )
-        .shadow(color: Color.black.opacity(0.16), radius: 14, x: 0, y: 8)
-    }
-
-    private func fieldLabel(_ text: String) -> some View {
-        Text(text)
-            .font(.caption.weight(.semibold))
-            .foregroundStyle(.secondary)
-    }
-
-    private func validationText(_ text: String) -> some View {
-        Text(text)
-            .font(.caption2)
-            .foregroundStyle(Color(red: 0.63, green: 0.14, blue: 0.12))
     }
 
     private func updateHintMenuSubtitle(text: String, tone: UpdateAvailabilityTone) -> some View {

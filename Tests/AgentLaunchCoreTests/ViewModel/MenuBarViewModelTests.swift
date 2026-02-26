@@ -394,8 +394,10 @@ final class MenuBarViewModelTests: XCTestCase {
 
     func testLaunchInOriginalModeSkipsProxyPath() async {
         let router = SpyLaunchRouter()
+        let validator = SpyLaunchConfigurationValidator()
         let viewModel = MenuBarViewModel(
             modelDiscovery: StubModelDiscovery(result: .success(["gpt-5"])),
+            launchConfigurationValidator: validator,
             launchRouter: router,
             settingsStore: InMemorySettingsStore(
                 persistedSettings: MenuBarPersistedSettings(
@@ -413,13 +415,44 @@ final class MenuBarViewModelTests: XCTestCase {
 
         XCTAssertEqual(router.launchOriginalCallCount, 1)
         XCTAssertEqual(router.launchProxyCallCount, 0)
+        XCTAssertEqual(validator.validateCallCount, 0)
         XCTAssertEqual(viewModel.state, .idle)
     }
 
-    func testLaunchInProxyModePassesCurrentConfiguration() async {
+    func testLaunchClaudeInOriginalModeRoutesToClaudeOriginalOnly() async {
         let router = SpyLaunchRouter()
+        let validator = SpyLaunchConfigurationValidator()
         let viewModel = MenuBarViewModel(
             modelDiscovery: StubModelDiscovery(result: .success(["gpt-5"])),
+            launchConfigurationValidator: validator,
+            launchRouter: router,
+            settingsStore: InMemorySettingsStore(
+                persistedSettings: MenuBarPersistedSettings(
+                    mode: .proxy,
+                    baseURLText: "",
+                    selectedModel: "",
+                    reasoningLevel: .medium
+                )
+            ),
+            apiKeyStore: InMemoryAPIKeyStore()
+        )
+        viewModel.mode = .original
+
+        await viewModel.launchSelectedAgent(.claude)
+
+        XCTAssertEqual(router.launchOriginalByAgent[.claude], 1)
+        XCTAssertEqual(router.launchOriginalByAgent[.codex], nil)
+        XCTAssertEqual(router.launchProxyCallCount, 0)
+        XCTAssertEqual(validator.validateCallCount, 0)
+        XCTAssertEqual(viewModel.state, .idle)
+    }
+
+    func testLaunchInProxyModeValidatesAndPassesCurrentConfiguration() async {
+        let router = SpyLaunchRouter()
+        let validator = SpyLaunchConfigurationValidator()
+        let viewModel = MenuBarViewModel(
+            modelDiscovery: StubModelDiscovery(result: .success(["gpt-5"])),
+            launchConfigurationValidator: validator,
             launchRouter: router,
             settingsStore: InMemorySettingsStore(
                 persistedSettings: MenuBarPersistedSettings(
@@ -446,6 +479,62 @@ final class MenuBarViewModelTests: XCTestCase {
         XCTAssertEqual(router.lastProxyConfiguration?.providerAPIKey, "sk-test")
         XCTAssertEqual(router.lastProxyConfiguration?.modelIdentifier, "gpt-5")
         XCTAssertEqual(router.lastProxyConfiguration?.reasoningLevel, .high)
+        XCTAssertEqual(validator.validateCallCount, 1)
+        XCTAssertEqual(validator.lastConfiguration?.apiBaseURL.absoluteString, "https://example.com/v1")
+        XCTAssertEqual(validator.lastConfiguration?.providerAPIKey, "sk-test")
+        XCTAssertEqual(validator.lastConfiguration?.modelIdentifier, "gpt-5")
+        XCTAssertEqual(validator.lastConfiguration?.reasoningLevel, .high)
+    }
+
+    func testLaunchClaudeInProxyModeValidatesAndPassesCurrentConfiguration() async {
+        let router = SpyLaunchRouter()
+        let validator = SpyLaunchConfigurationValidator()
+        let viewModel = MenuBarViewModel(
+            modelDiscovery: StubModelDiscovery(result: .success(["gpt-5"])),
+            launchConfigurationValidator: validator,
+            launchRouter: router,
+            settingsStore: InMemorySettingsStore(
+                persistedSettings: MenuBarPersistedSettings(
+                    mode: .proxy,
+                    baseURLText: "",
+                    selectedModel: "",
+                    reasoningLevel: .medium
+                )
+            ),
+            apiKeyStore: InMemoryAPIKeyStore()
+        )
+        viewModel.mode = .proxy
+        viewModel.baseURLText = "https://example.com/v1"
+        viewModel.apiKeyMasked = "sk-test"
+        viewModel.selectedModel = "claude-sonnet-4-5"
+        viewModel.reasoningLevel = .high
+        viewModel.models = ["claude-sonnet-4-5"]
+
+        await viewModel.launchSelectedAgent(.claude)
+
+        XCTAssertEqual(router.launchProxyByAgent[.claude], 1)
+        XCTAssertEqual(router.launchProxyByAgent[.codex], nil)
+        XCTAssertEqual(validator.validateCallCount, 1)
+        XCTAssertEqual(router.lastProxyConfiguration?.modelIdentifier, "claude-sonnet-4-5")
+    }
+
+    func testCanLaunchClaudeIsFalseWhenClaudeNotInstalled() {
+        let viewModel = MenuBarViewModel(
+            modelDiscovery: StubModelDiscovery(result: .success(["gpt-5"])),
+            launchRouter: SpyLaunchRouter(installedAgents: [.codex]),
+            settingsStore: InMemorySettingsStore(
+                persistedSettings: MenuBarPersistedSettings(
+                    mode: .original,
+                    baseURLText: "",
+                    selectedModel: "",
+                    reasoningLevel: .medium
+                )
+            ),
+            apiKeyStore: InMemoryAPIKeyStore()
+        )
+
+        XCTAssertTrue(viewModel.canLaunchCodex)
+        XCTAssertFalse(viewModel.canLaunchClaude)
     }
 
     func testSuccessfulProxyLaunchStoresMergedConfigForInspection() async {
@@ -455,8 +544,10 @@ final class MenuBarViewModelTests: XCTestCase {
         [profiles.merged]
         model = "gpt-5.3-codex"
         """
+        let validator = SpyLaunchConfigurationValidator()
         let viewModel = MenuBarViewModel(
             modelDiscovery: StubModelDiscovery(result: .success(["gpt-5"])),
+            launchConfigurationValidator: validator,
             launchRouter: SpyLaunchRouter(proxyLaunchMergedConfiguration: mergedConfigurationForInspection),
             settingsStore: InMemorySettingsStore(
                 persistedSettings: MenuBarPersistedSettings(
@@ -514,8 +605,10 @@ final class MenuBarViewModelTests: XCTestCase {
 
     func testLaunchFailureInProxyModeTransitionsToLaunchFailedState() async {
         let router = SpyLaunchRouter(proxyLaunchError: StubLaunchError.failed)
+        let validator = SpyLaunchConfigurationValidator()
         let viewModel = MenuBarViewModel(
             modelDiscovery: StubModelDiscovery(result: .success(["gpt-5"])),
+            launchConfigurationValidator: validator,
             launchRouter: router,
             settingsStore: InMemorySettingsStore(
                 persistedSettings: MenuBarPersistedSettings(
@@ -538,6 +631,41 @@ final class MenuBarViewModelTests: XCTestCase {
         XCTAssertEqual(viewModel.state, .launchFailed)
         XCTAssertTrue(viewModel.statusMessage?.contains("Launch failed") == true)
     }
+
+    func testLaunchPrecheckFailureStopsProxyLaunchAndShowsError() async {
+        let validator = SpyLaunchConfigurationValidator(
+            result: .failure(LaunchConfigurationValidationError.rejected("reasoning effort is not supported for model"))
+        )
+        let router = SpyLaunchRouter()
+        let viewModel = MenuBarViewModel(
+            modelDiscovery: StubModelDiscovery(result: .success(["gpt-5"])),
+            launchConfigurationValidator: validator,
+            launchRouter: router,
+            settingsStore: InMemorySettingsStore(
+                persistedSettings: MenuBarPersistedSettings(
+                    mode: .proxy,
+                    baseURLText: "",
+                    selectedModel: "",
+                    reasoningLevel: .medium
+                )
+            ),
+            apiKeyStore: InMemoryAPIKeyStore()
+        )
+        viewModel.mode = .proxy
+        viewModel.baseURLText = "https://example.com/v1"
+        viewModel.apiKeyMasked = "sk-test"
+        viewModel.selectedModel = "gpt-5"
+        viewModel.reasoningLevel = .high
+        viewModel.models = ["gpt-5"]
+
+        await viewModel.launchSelectedAgent()
+
+        XCTAssertEqual(validator.validateCallCount, 1)
+        XCTAssertEqual(router.launchProxyCallCount, 0)
+        XCTAssertEqual(viewModel.state, .launchFailed)
+        XCTAssertTrue(viewModel.statusMessage?.contains("Launch precheck failed") == true)
+        XCTAssertTrue(viewModel.statusMessage?.contains("reasoning effort is not supported for model") == true)
+    }
 }
 
 private enum StubLaunchError: Error {
@@ -555,34 +683,57 @@ private struct StubModelDiscovery: ModelDiscovering {
 private final class SpyLaunchRouter: MenuBarLaunchRouting {
     private(set) var launchOriginalCallCount = 0
     private(set) var launchProxyCallCount = 0
+    private(set) var launchOriginalByAgent: [AgentTarget: Int] = [:]
+    private(set) var launchProxyByAgent: [AgentTarget: Int] = [:]
     private(set) var lastProxyConfiguration: AgentProxyLaunchConfig?
+    private(set) var lastOriginalAgent: AgentTarget?
+    private(set) var lastProxyAgent: AgentTarget?
     private let originalLaunchError: Error?
     private let originalLaunchConfiguration: String?
     private let proxyLaunchError: Error?
     private let proxyLaunchMergedConfiguration: String?
+    private let installedAgents: Set<AgentTarget>
 
     init(
         originalLaunchError: Error? = nil,
         originalLaunchConfiguration: String? = nil,
         proxyLaunchError: Error? = nil,
-        proxyLaunchMergedConfiguration: String? = nil
+        proxyLaunchMergedConfiguration: String? = nil,
+        installedAgents: Set<AgentTarget> = Set(AgentTarget.allCases)
     ) {
         self.originalLaunchError = originalLaunchError
         self.originalLaunchConfiguration = originalLaunchConfiguration
         self.proxyLaunchError = proxyLaunchError
         self.proxyLaunchMergedConfiguration = proxyLaunchMergedConfiguration
+        self.installedAgents = installedAgents
     }
 
     func launchOriginalMode() async throws -> String? {
+        try await launchOriginalMode(agent: .codex)
+    }
+
+    func launchProxyMode(configuration: AgentProxyLaunchConfig) async throws -> String {
+        try await launchProxyMode(agent: .codex, configuration: configuration)
+    }
+
+    func isInstalled(agent: AgentTarget) -> Bool {
+        installedAgents.contains(agent)
+    }
+
+    func launchOriginalMode(agent: AgentTarget) async throws -> String? {
         launchOriginalCallCount += 1
+        launchOriginalByAgent[agent, default: 0] += 1
+        lastOriginalAgent = agent
         if let originalLaunchError {
             throw originalLaunchError
         }
         return originalLaunchConfiguration
     }
 
-    func launchProxyMode(configuration: AgentProxyLaunchConfig) async throws -> String {
+    func launchProxyMode(agent: AgentTarget, configuration: AgentProxyLaunchConfig) async throws -> String {
         launchProxyCallCount += 1
+        launchProxyByAgent[agent, default: 0] += 1
+        lastProxyAgent = agent
         lastProxyConfiguration = configuration
         if let proxyLaunchError {
             throw proxyLaunchError
@@ -591,6 +742,22 @@ private final class SpyLaunchRouter: MenuBarLaunchRouting {
             return proxyLaunchMergedConfiguration
         }
         return AgentConfigRenderer().renderTemporaryConfiguration(from: configuration)
+    }
+}
+
+private final class SpyLaunchConfigurationValidator: LaunchConfigurationValidating {
+    private(set) var validateCallCount = 0
+    private(set) var lastConfiguration: AgentProxyLaunchConfig?
+    private let result: Result<Void, Error>
+
+    init(result: Result<Void, Error> = .success(())) {
+        self.result = result
+    }
+
+    func validate(configuration: AgentProxyLaunchConfig) async throws {
+        validateCallCount += 1
+        lastConfiguration = configuration
+        try result.get()
     }
 }
 

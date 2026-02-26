@@ -14,21 +14,25 @@ final class DefaultMenuBarLaunchRouterTests: XCTestCase {
 
         let provider = StubProvider(configurationFilePath: configurationFilePath)
         let launcher = SpyLauncher()
+        let transaction = SpyTransaction()
         let router = DefaultMenuBarLaunchRouter(
             provider: provider,
             launcher: launcher,
             coordinator: AgentLaunchCoordinator(
                 provider: provider,
-                transaction: StubTransaction(),
+                transaction: transaction,
                 launcher: launcher,
                 launchEventSource: StubLaunchEventSource(),
                 launchTimeoutNanoseconds: 1_000_000
             )
         )
 
-        let launchedConfiguration = try await router.launchOriginalMode()
+        let launchedConfiguration = try await router.launchOriginalMode(agent: .codex)
 
         XCTAssertEqual(launcher.launchCount, 1)
+        XCTAssertEqual(launcher.lastBundleIdentifier, provider.applicationBundleIdentifier)
+        XCTAssertTrue(launcher.lastEnvironmentVariables?.isEmpty == true)
+        XCTAssertEqual(transaction.applyCount, 0)
         XCTAssertEqual(
             try String(contentsOf: configurationFilePath, encoding: .utf8),
             """
@@ -45,6 +49,46 @@ final class DefaultMenuBarLaunchRouterTests: XCTestCase {
             model = "gpt-5"
             """
         )
+    }
+
+    func testLaunchProxyModeForClaudeInjectsEnvironmentAndSkipsCodexTransaction() async throws {
+        let configurationFilePath = try makeTemporaryConfigFilePath()
+        let provider = StubProvider(configurationFilePath: configurationFilePath)
+        let launcher = SpyLauncher()
+        let transaction = SpyTransaction()
+        let router = DefaultMenuBarLaunchRouter(
+            provider: provider,
+            launcher: launcher,
+            coordinator: AgentLaunchCoordinator(
+                provider: provider,
+                transaction: transaction,
+                launcher: launcher,
+                launchEventSource: StubLaunchEventSource(),
+                launchTimeoutNanoseconds: 1_000_000
+            )
+        )
+        let configuration = AgentProxyLaunchConfig(
+            apiBaseURL: URL(string: "https://example.com/v1")!,
+            providerAPIKey: "sk-test-12345678",
+            modelIdentifier: "claude-sonnet-4-5",
+            reasoningLevel: .high
+        )
+
+        let launchLog = try await router.launchProxyMode(agent: .claude, configuration: configuration)
+
+        XCTAssertEqual(launcher.launchCount, 1)
+        XCTAssertEqual(launcher.lastBundleIdentifier, AgentTarget.claude.applicationBundleIdentifier)
+        XCTAssertEqual(launcher.lastEnvironmentVariables?["ANTHROPIC_API_KEY"], "sk-test-12345678")
+        XCTAssertEqual(launcher.lastEnvironmentVariables?["OPENAI_API_KEY"], "sk-test-12345678")
+        XCTAssertEqual(launcher.lastEnvironmentVariables?["ANTHROPIC_BASE_URL"], "https://example.com/v1")
+        XCTAssertEqual(launcher.lastEnvironmentVariables?["OPENAI_BASE_URL"], "https://example.com/v1")
+        XCTAssertEqual(launcher.lastEnvironmentVariables?["ANTHROPIC_MODEL"], "claude-sonnet-4-5")
+        XCTAssertEqual(launcher.lastEnvironmentVariables?["OPENAI_MODEL"], "claude-sonnet-4-5")
+        XCTAssertEqual(launcher.lastEnvironmentVariables?["ANTHROPIC_REASONING_EFFORT"], "high")
+        XCTAssertEqual(launcher.lastEnvironmentVariables?["OPENAI_REASONING_EFFORT"], "high")
+        XCTAssertEqual(transaction.applyCount, 0)
+        XCTAssertFalse(launchLog.contains("sk-test-12345678"))
+        XCTAssertTrue(launchLog.contains("ANTHROPIC_API_KEY = \"sk-t********5678\""))
     }
 
     private func makeTemporaryConfigFilePath() throws -> URL {
@@ -70,15 +114,22 @@ private struct StubProvider: AgentProviderBase {
 
 private final class SpyLauncher: AgentLaunching {
     private(set) var launchCount = 0
+    private(set) var lastBundleIdentifier: String?
+    private(set) var lastEnvironmentVariables: [String: String]?
 
     func launchApplication(bundleIdentifier: String, environmentVariables: [String: String]) async throws {
         launchCount += 1
+        lastBundleIdentifier = bundleIdentifier
+        lastEnvironmentVariables = environmentVariables
     }
 }
 
-private final class StubTransaction: ConfigurationTransactionHandling {
+private final class SpyTransaction: ConfigurationTransactionHandling {
+    private(set) var applyCount = 0
+
     func applyTemporaryConfiguration(_ temporaryConfiguration: String, at configurationFilePath: URL) throws -> String {
-        temporaryConfiguration
+        applyCount += 1
+        return temporaryConfiguration
     }
 
     func restoreOriginalConfiguration(at configurationFilePath: URL) throws {}

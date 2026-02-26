@@ -1,3 +1,4 @@
+import AppKit
 import Combine
 import Foundation
 
@@ -10,9 +11,28 @@ public protocol ModelDiscovering {
 extension ModelDiscoveryService: ModelDiscovering {}
 
 @MainActor
+public protocol LaunchConfigurationValidating {
+    func validate(configuration: AgentProxyLaunchConfig) async throws
+}
+
+@MainActor
+extension LaunchConfigurationValidationService: LaunchConfigurationValidating {}
+
+@MainActor
 public protocol MenuBarLaunchRouting {
-    func launchOriginalMode() async throws -> String?
-    func launchProxyMode(configuration: AgentProxyLaunchConfig) async throws -> String
+    func isInstalled(agent: AgentTarget) -> Bool
+    func launchOriginalMode(agent: AgentTarget) async throws -> String?
+    func launchProxyMode(agent: AgentTarget, configuration: AgentProxyLaunchConfig) async throws -> String
+}
+
+public extension MenuBarLaunchRouting {
+    func launchOriginalMode() async throws -> String? {
+        try await launchOriginalMode(agent: .codex)
+    }
+
+    func launchProxyMode(configuration: AgentProxyLaunchConfig) async throws -> String {
+        try await launchProxyMode(agent: .codex, configuration: configuration)
+    }
 }
 
 public struct MenuBarPersistedSettings: Equatable, Sendable {
@@ -101,9 +121,9 @@ public enum MenuBarViewState: Equatable, Sendable {
 
 @MainActor
 public struct DefaultMenuBarLaunchRouter: MenuBarLaunchRouting {
-    private let provider: any AgentProviderBase
+    private let codexProvider: any AgentProviderBase
     private let launcher: any AgentLaunching
-    private let coordinator: AgentLaunchCoordinator
+    private let codexCoordinator: AgentLaunchCoordinator
     private let fileManager: FileManager
 
     public init(
@@ -112,24 +132,47 @@ public struct DefaultMenuBarLaunchRouter: MenuBarLaunchRouting {
         coordinator: AgentLaunchCoordinator? = nil,
         fileManager: FileManager = .default
     ) {
-        self.provider = provider
+        codexProvider = provider
         self.launcher = launcher
-        self.coordinator = coordinator ?? AgentLaunchCoordinator(provider: provider)
+        codexCoordinator = coordinator ?? AgentLaunchCoordinator(provider: provider)
         self.fileManager = fileManager
     }
 
-    public func launchOriginalMode() async throws -> String? {
-        try commentOutProfileAssignmentIfNeeded(at: provider.configurationFilePath)
-        let launchedConfiguration = try readConfigurationTextIfPresent(at: provider.configurationFilePath)
-        try await launcher.launchApplication(
-            bundleIdentifier: provider.applicationBundleIdentifier,
-            environmentVariables: [:]
-        )
-        return launchedConfiguration
+    public func isInstalled(agent: AgentTarget) -> Bool {
+        NSWorkspace.shared.urlForApplication(withBundleIdentifier: agent.applicationBundleIdentifier) != nil
     }
 
-    public func launchProxyMode(configuration: AgentProxyLaunchConfig) async throws -> String {
-        try await coordinator.launchWithTemporaryConfiguration(configuration)
+    public func launchOriginalMode(agent: AgentTarget) async throws -> String? {
+        switch agent {
+        case .codex:
+            try commentOutProfileAssignmentIfNeeded(at: codexProvider.configurationFilePath)
+            let launchedConfiguration = try readConfigurationTextIfPresent(at: codexProvider.configurationFilePath)
+            try await launcher.launchApplication(
+                bundleIdentifier: codexProvider.applicationBundleIdentifier,
+                environmentVariables: [:]
+            )
+            return launchedConfiguration
+        case .claude:
+            try await launcher.launchApplication(
+                bundleIdentifier: agent.applicationBundleIdentifier,
+                environmentVariables: [:]
+            )
+            return nil
+        }
+    }
+
+    public func launchProxyMode(agent: AgentTarget, configuration: AgentProxyLaunchConfig) async throws -> String {
+        switch agent {
+        case .codex:
+            return try await codexCoordinator.launchWithTemporaryConfiguration(configuration)
+        case .claude:
+            let environmentVariables = ClaudeLaunchEnvironment.makeProxyEnvironment(from: configuration)
+            try await launcher.launchApplication(
+                bundleIdentifier: agent.applicationBundleIdentifier,
+                environmentVariables: environmentVariables
+            )
+            return ClaudeLaunchEnvironment.renderMaskedSnapshot(from: environmentVariables)
+        }
     }
 
     private func readConfigurationTextIfPresent(at configurationFilePath: URL) throws -> String? {
@@ -195,13 +238,16 @@ public final class MenuBarViewModel: ObservableObject {
         didSet { persistSettingsIfNeeded() }
     }
     @Published public private(set) var isLaunching = false
+    @Published public private(set) var isLaunchingCodex = false
+    @Published public private(set) var isLaunchingClaude = false
     @Published public private(set) var isTestingConnection = false
     @Published public private(set) var state: MenuBarViewState = .idle
     @Published public private(set) var statusMessage: String?
     @Published public private(set) var isStatusError = false
-    @Published public private(set) var lastLaunchedProxyConfigTOML: String?
+    @Published public private(set) var lastLaunchLogText: String?
 
     private let modelDiscovery: any ModelDiscovering
+    private let launchConfigurationValidator: any LaunchConfigurationValidating
     private let launchRouter: any MenuBarLaunchRouting
     private let settingsStore: any MenuBarSettingsStoring
     private let apiKeyStore: any MenuBarAPIKeyStoring
@@ -210,11 +256,13 @@ public final class MenuBarViewModel: ObservableObject {
 
     public init(
         modelDiscovery: (any ModelDiscovering)? = nil,
+        launchConfigurationValidator: (any LaunchConfigurationValidating)? = nil,
         launchRouter: (any MenuBarLaunchRouting)? = nil,
         settingsStore: (any MenuBarSettingsStoring)? = nil,
         apiKeyStore: (any MenuBarAPIKeyStoring)? = nil
     ) {
         self.modelDiscovery = modelDiscovery ?? ModelDiscoveryService()
+        self.launchConfigurationValidator = launchConfigurationValidator ?? LaunchConfigurationValidationService()
         self.launchRouter = launchRouter ?? DefaultMenuBarLaunchRouter()
         self.settingsStore = settingsStore ?? UserDefaultsMenuBarSettingsStore()
         self.apiKeyStore = apiKeyStore ?? KeychainMenuBarAPIKeyStore()
@@ -252,7 +300,34 @@ public final class MenuBarViewModel: ObservableObject {
     }
 
     public var canLaunch: Bool {
+        canLaunchCodex
+    }
+
+    public var canLaunchCodex: Bool {
+        canLaunch(agent: .codex)
+    }
+
+    public var canLaunchClaude: Bool {
+        canLaunch(agent: .claude)
+    }
+
+    public var canInspectLastLaunchLogText: Bool {
+        guard statusMessage == "Launch requested." else { return false }
+        guard let lastLaunchLogText else { return false }
+        return !lastLaunchLogText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    public var canInspectLastLaunchConfigTOML: Bool {
+        canInspectLastLaunchLogText
+    }
+
+    public var lastLaunchedProxyConfigTOML: String? {
+        lastLaunchLogText
+    }
+
+    private func canLaunch(agent: AgentTarget) -> Bool {
         guard !isLaunching else { return false }
+        guard launchRouter.isInstalled(agent: agent) else { return false }
         switch mode {
         case .original:
             return true
@@ -269,10 +344,72 @@ public final class MenuBarViewModel: ObservableObject {
         return baseURLValidationMessage == nil && apiKeyValidationMessage == nil
     }
 
-    public var canInspectLastLaunchConfigTOML: Bool {
-        guard statusMessage == "Launch requested." else { return false }
-        guard let lastLaunchedProxyConfigTOML else { return false }
-        return !lastLaunchedProxyConfigTOML.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    public func launchSelectedAgent() async {
+        await launchSelectedAgent(.codex)
+    }
+
+    public func launchSelectedAgent(_ agent: AgentTarget) async {
+        guard launchRouter.isInstalled(agent: agent) else {
+            state = .launchFailed
+            setStatusMessage("\(agent.displayName) is not installed.", isError: true)
+            return
+        }
+
+        guard canLaunch(agent: agent) else {
+            if mode == .proxy {
+                state = .launchFailed
+                setStatusMessage(baseURLValidationMessage ?? apiKeyValidationMessage ?? modelValidationMessage, isError: true)
+            }
+            return
+        }
+
+        state = .launching
+        setStatusMessage(nil)
+        isLaunching = true
+        setLaunchingAgent(agent)
+        defer {
+            isLaunching = false
+            setLaunchingAgent(nil)
+        }
+
+        var launchLogForInspection: String?
+        do {
+            switch mode {
+            case .original:
+                launchLogForInspection = try await launchRouter.launchOriginalMode(agent: agent)
+            case .proxy:
+                guard let apiBaseURL = validatedBaseURL(from: baseURLText) else {
+                    state = .launchFailed
+                    setStatusMessage("Invalid Base URL.", isError: true)
+                    return
+                }
+
+                let configuration = AgentProxyLaunchConfig(
+                    apiBaseURL: apiBaseURL,
+                    providerAPIKey: apiKeyMasked,
+                    modelIdentifier: selectedModel,
+                    reasoningLevel: reasoningLevel
+                )
+                do {
+                    try await launchConfigurationValidator.validate(configuration: configuration)
+                } catch {
+                    state = .launchFailed
+                    setStatusMessage("Launch precheck failed: \(resolvedErrorMessage(from: error))", isError: true)
+                    return
+                }
+                launchLogForInspection = try await launchRouter
+                    .launchProxyMode(agent: agent, configuration: configuration)
+            }
+            lastLaunchLogText = launchLogForInspection
+            state = .idle
+            setStatusMessage("Launch requested.")
+            if mode == .proxy {
+                persistAPIKeyIfNeeded()
+            }
+        } catch {
+            state = .launchFailed
+            setStatusMessage("Launch failed: \(resolvedErrorMessage(from: error))", isError: true)
+        }
     }
 
     public func testConnection() async {
@@ -312,53 +449,6 @@ public final class MenuBarViewModel: ObservableObject {
         }
     }
 
-    public func launchSelectedAgent() async {
-        guard canLaunch else {
-            if mode == .proxy {
-                state = .launchFailed
-                setStatusMessage(baseURLValidationMessage ?? apiKeyValidationMessage ?? modelValidationMessage, isError: true)
-            }
-            return
-        }
-
-        state = .launching
-        setStatusMessage(nil)
-        isLaunching = true
-        defer { isLaunching = false }
-
-        var renderedConfigurationForInspection: String?
-        do {
-            switch mode {
-            case .original:
-                renderedConfigurationForInspection = try await launchRouter.launchOriginalMode()
-            case .proxy:
-                guard let apiBaseURL = validatedBaseURL(from: baseURLText) else {
-                    state = .launchFailed
-                    setStatusMessage("Invalid Base URL.", isError: true)
-                    return
-                }
-
-                let configuration = AgentProxyLaunchConfig(
-                    apiBaseURL: apiBaseURL,
-                    providerAPIKey: apiKeyMasked,
-                    modelIdentifier: selectedModel,
-                    reasoningLevel: reasoningLevel
-                )
-                renderedConfigurationForInspection = try await launchRouter
-                    .launchProxyMode(configuration: configuration)
-            }
-            lastLaunchedProxyConfigTOML = renderedConfigurationForInspection
-            state = .idle
-            setStatusMessage("Launch requested.")
-            if mode == .proxy {
-                persistAPIKeyIfNeeded()
-            }
-        } catch {
-            state = .launchFailed
-            setStatusMessage("Launch failed: \(resolvedErrorMessage(from: error))", isError: true)
-        }
-    }
-
     public func handlePanelPresented() async {
         guard mode == .proxy else { return }
         guard !hasPreparedProxyContext else { return }
@@ -393,6 +483,9 @@ public final class MenuBarViewModel: ObservableObject {
         }
         if let urlError = error as? URLError {
             return "Network error (\(urlError.code.rawValue)): \(urlError.localizedDescription)"
+        }
+        if let validationError = error as? LaunchConfigurationValidationError {
+            return validationError.localizedDescription
         }
         return error.localizedDescription
     }
@@ -432,5 +525,10 @@ public final class MenuBarViewModel: ObservableObject {
     private func setStatusMessage(_ message: String?, isError: Bool = false) {
         statusMessage = message
         isStatusError = message == nil ? false : isError
+    }
+
+    private func setLaunchingAgent(_ agent: AgentTarget?) {
+        isLaunchingCodex = agent == .codex
+        isLaunchingClaude = agent == .claude
     }
 }
