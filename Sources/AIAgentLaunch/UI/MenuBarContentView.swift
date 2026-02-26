@@ -89,18 +89,15 @@ struct MenuBarContentView: View {
             Spacer()
 
             Menu {
-                Button {
+                Button("检测升级") {
                     sparkleUpdaterController.checkForUpdates()
-                } label: {
-                    VStack(alignment: .leading, spacing: 1) {
-                        Text("检测升级")
-                        if let updateHintText = sparkleUpdaterController.updateHintText {
-                            Text(updateHintText)
-                                .font(.caption2)
-                                .foregroundStyle(updateHintColor(for: sparkleUpdaterController.updateHintTone))
-                                .lineLimit(1)
-                        }
-                    }
+                }
+
+                if let updateHintText = sparkleUpdaterController.updateHintText {
+                    updateHintMenuSubtitle(
+                        text: updateHintText,
+                        tone: sparkleUpdaterController.updateHintTone
+                    )
                 }
 
                 Divider()
@@ -352,6 +349,19 @@ struct MenuBarContentView: View {
         Text(text)
             .font(.caption2)
             .foregroundStyle(Color(red: 0.63, green: 0.14, blue: 0.12))
+    }
+
+    private func updateHintMenuSubtitle(text: String, tone: UpdateAvailabilityTone) -> some View {
+        HStack(spacing: 6) {
+            Circle()
+                .fill(updateHintColor(for: tone))
+                .frame(width: 6, height: 6)
+            Text(text)
+                .font(.caption2)
+                .foregroundStyle(updateHintColor(for: tone))
+                .lineLimit(1)
+        }
+        .padding(.vertical, 2)
     }
 
     private func updateHintColor(for tone: UpdateAvailabilityTone) -> Color {

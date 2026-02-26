@@ -28,8 +28,17 @@ final class MenuBarContentViewSourceLayoutTests: XCTestCase {
         let source = try String(contentsOf: menuBarContentViewSourceURL(), encoding: .utf8)
 
         XCTAssertTrue(
-            source.contains("Text(\"检测升级\")"),
+            source.contains("Button(\"检测升级\")"),
             "Update menu entry label should remain stable and descriptive."
+        )
+    }
+
+    func testCheckForUpdatesStatusUsesDedicatedSubtitleRow() throws {
+        let source = try String(contentsOf: menuBarContentViewSourceURL(), encoding: .utf8)
+
+        XCTAssertTrue(
+            source.contains("updateHintMenuSubtitle"),
+            "Update status should render on a dedicated subtitle row so it remains visible in menu items."
         )
     }
 
