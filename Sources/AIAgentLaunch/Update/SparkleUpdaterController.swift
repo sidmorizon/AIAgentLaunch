@@ -1,4 +1,5 @@
 import AgentLaunchCore
+import AppKit
 import Foundation
 import Sparkle
 
@@ -46,6 +47,22 @@ final class SparkleUpdaterController: NSObject, ObservableObject {
     }
 
     func checkForUpdates() {
+        guard let updater = updaterController?.updater else {
+            updateHint = .failed
+            presentManualCheckFailureAlert(
+                reason: "当前安装包未正确配置升级能力，请重新下载安装最新版本后重试。"
+            )
+            return
+        }
+        guard updater.canCheckForUpdates else {
+            updateHint = .failed
+            presentManualCheckFailureAlert(
+                reason: "更新服务暂时不可用，请稍后重试。"
+            )
+            return
+        }
+
+        updateHint = .checking
         updaterController?.checkForUpdates(nil)
     }
 
@@ -64,6 +81,15 @@ final class SparkleUpdaterController: NSObject, ObservableObject {
 
         updateHint = .checking
         updater.checkForUpdateInformation()
+    }
+
+    private func presentManualCheckFailureAlert(reason: String) {
+        let alert = NSAlert()
+        alert.messageText = "无法检测升级"
+        alert.informativeText = reason
+        alert.alertStyle = .warning
+        alert.addButton(withTitle: "确定")
+        alert.runModal()
     }
 }
 

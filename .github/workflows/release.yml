@@ -105,7 +105,7 @@ jobs:
             exit 1
           fi
 
-      - name: Build universal app archives
+      - name: Build universal app archive
         env:
           SPARKLE_PUBLIC_ED_KEY: ${{ secrets.SPARKLE_PUBLIC_ED_KEY }}
           REQUIRE_SPARKLE_PUBLIC_KEY: "1"
@@ -117,14 +117,16 @@ jobs:
           SPARKLE_PRIVATE_ED_KEY: ${{ secrets.SPARKLE_PRIVATE_ED_KEY }}
           REQUIRE_SPARKLE_SIGNING: "1"
         run: |
-          scripts/generate-appcast.sh "${{ steps.version.outputs.version }}" "${{ github.repository }}"
+          scripts/generate-appcast.sh \
+            "${{ steps.version.outputs.version }}" \
+            "${{ github.repository }}" \
+            "dist/AIAgentLaunch-${{ steps.version.outputs.version }}.dmg"
 
       - name: Publish GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           TAG="v${{ steps.version.outputs.version }}"
-          ASSET_ZIP="dist/AIAgentLaunch-${{ steps.version.outputs.version }}.zip"
           ASSET_DMG="dist/AIAgentLaunch-${{ steps.version.outputs.version }}.dmg"
 
           if gh release view "$TAG" >/dev/null 2>&1; then
@@ -133,7 +135,6 @@ jobs:
           fi
 
           gh release create "$TAG" \
-            "$ASSET_ZIP" \
             "$ASSET_DMG" \
             "dist/appcast.xml" \
             --title "AIAgentLaunch v${{ steps.version.outputs.version }}" \

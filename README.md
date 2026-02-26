@@ -32,14 +32,14 @@ make test
 - 项目版本由仓库根目录 [`version`](version) 文件定义（例如 `0.1.0`）。
 - GitHub Actions 监听 `main` 分支上的 `version` 变更，自动执行：
   - 校验版本号必须递增；
-  - 打包 `AIAgentLaunch.app` 为 `AIAgentLaunch-<version>.zip`；
+  - 打包 `AIAgentLaunch.app` 为 `AIAgentLaunch-<version>.dmg`；
   - 使用 Sparkle EdDSA 私钥签名更新包并生成 `appcast.xml`；
   - 发布到 GitHub Release（tag: `v<version>`）。
 - Release workflow 依赖仓库 Secrets：
   - `SPARKLE_PUBLIC_ED_KEY`：写入应用 `Info.plist` 的 `SUPublicEDKey`；
-  - `SPARKLE_PRIVATE_ED_KEY`：用于签名 zip 并写入 `sparkle:edSignature`。
+  - `SPARKLE_PRIVATE_ED_KEY`：用于签名 dmg 并写入 `sparkle:edSignature`。
 - 菜单栏界面会读取版本并展示 `v<version>`。
-- 应用内“检测升级”由 Sparkle 处理，依赖发布产物中的 `appcast.xml` 与 zip 资产。
+- 应用内“检测升级”由 Sparkle 处理，依赖发布产物中的 `appcast.xml` 与 dmg 资产。
 
 ## Dev Watch Mode
 

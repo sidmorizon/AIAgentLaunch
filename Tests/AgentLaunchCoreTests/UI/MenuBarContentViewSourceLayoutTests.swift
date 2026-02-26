@@ -15,6 +15,15 @@ final class MenuBarContentViewSourceLayoutTests: XCTestCase {
         )
     }
 
+    func testCheckForUpdatesMenuItemIsAlwaysEnabled() throws {
+        let source = try String(contentsOf: menuBarContentViewSourceURL(), encoding: .utf8)
+
+        XCTAssertFalse(
+            source.contains(".disabled(!sparkleUpdaterController.canCheckForUpdates)"),
+            "Manual update check should remain clickable even when updater state is unavailable."
+        )
+    }
+
     private func menuBarContentViewSourceURL() -> URL {
         URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent() // UI

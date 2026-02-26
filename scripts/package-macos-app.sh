@@ -9,6 +9,7 @@ SPARKLE_PUBLIC_ED_KEY="${SPARKLE_PUBLIC_ED_KEY:-}"
 REQUIRE_SPARKLE_PUBLIC_KEY="${REQUIRE_SPARKLE_PUBLIC_KEY:-0}"
 ARM64_TRIPLE="arm64-apple-macosx14.0"
 X86_64_TRIPLE="x86_64-apple-macosx14.0"
+ICON_SOURCE_PATH="Resources/AppIcon.icns"
 
 if [[ -z "$VERSION" ]]; then
   if [[ ! -f "$VERSION_FILE" ]]; then
@@ -90,6 +91,16 @@ BLOCK
 )
 fi
 
+ICON_BLOCK=""
+if [[ -f "$ICON_SOURCE_PATH" ]]; then
+  cp "$ICON_SOURCE_PATH" "$CONTENTS_DIR/Resources/AppIcon.icns"
+  ICON_BLOCK=$(cat <<BLOCK
+    <key>CFBundleIconFile</key>
+    <string>AppIcon</string>
+BLOCK
+)
+fi
+
 cat > "$CONTENTS_DIR/Info.plist" <<EOF_PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -119,16 +130,12 @@ cat > "$CONTENTS_DIR/Info.plist" <<EOF_PLIST
     <false/>
 $SU_FEED_BLOCK
 $SPARKLE_PUBLIC_KEY_BLOCK
+$ICON_BLOCK
 </dict>
 </plist>
 EOF_PLIST
 
-ARCHIVE_NAME="$APP_NAME-$VERSION.zip"
 DMG_NAME="$APP_NAME-$VERSION.dmg"
-(
-  cd "$DIST_DIR"
-  ditto -c -k --sequesterRsrc --keepParent "$APP_NAME.app" "$ARCHIVE_NAME"
-)
 
 DMG_STAGING_DIR="$(mktemp -d)"
 cleanup() {
@@ -149,5 +156,4 @@ hdiutil create \
 trap - EXIT
 cleanup
 
-echo "Created $DIST_DIR/$ARCHIVE_NAME"
 echo "Created $DIST_DIR/$DMG_NAME"

@@ -25,7 +25,7 @@ if [[ -z "$REPOSITORY" ]]; then
 fi
 
 if [[ -z "$ARCHIVE_PATH" ]]; then
-  ARCHIVE_PATH="dist/$APP_NAME-$VERSION.zip"
+  ARCHIVE_PATH="dist/$APP_NAME-$VERSION.dmg"
 fi
 
 if [[ ! -f "$ARCHIVE_PATH" ]]; then
@@ -58,7 +58,17 @@ fi
 
 ARCHIVE_SIZE="$(stat -f%z "$ARCHIVE_PATH")"
 PUBLISH_DATE="$(LC_ALL=C date -u '+%a, %d %b %Y %H:%M:%S +0000')"
-DOWNLOAD_URL="https://github.com/$REPOSITORY/releases/download/v$VERSION/$APP_NAME-$VERSION.zip"
+ARCHIVE_FILENAME="$(basename "$ARCHIVE_PATH")"
+DOWNLOAD_URL="https://github.com/$REPOSITORY/releases/download/v$VERSION/$ARCHIVE_FILENAME"
+ARCHIVE_TYPE="application/octet-stream"
+case "$ARCHIVE_FILENAME" in
+  *.dmg)
+    ARCHIVE_TYPE="application/x-apple-diskimage"
+    ;;
+  *.zip)
+    ARCHIVE_TYPE="application/zip"
+    ;;
+esac
 SPARKLE_ED_SIGNATURE=""
 
 if [[ -n "$SPARKLE_PRIVATE_ED_KEY" ]]; then
@@ -99,7 +109,7 @@ cat > "$OUTPUT_PATH" <<EOF_XML
         sparkle:shortVersionString="$VERSION"
         $SPARKLE_SIGNATURE_ATTRIBUTE
         length="$ARCHIVE_SIZE"
-        type="application/octet-stream"/>
+        type="$ARCHIVE_TYPE"/>
     </item>
   </channel>
 </rss>

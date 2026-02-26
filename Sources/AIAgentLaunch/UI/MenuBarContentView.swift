@@ -106,7 +106,6 @@ struct MenuBarContentView: View {
                         }
                     }
                 }
-                .disabled(!sparkleUpdaterController.canCheckForUpdates)
 
                 Divider()
 
