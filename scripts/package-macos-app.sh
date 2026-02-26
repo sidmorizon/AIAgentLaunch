@@ -5,6 +5,8 @@ APP_NAME="AIAgentLaunch"
 VERSION_FILE="version"
 VERSION="${1:-}"
 REPOSITORY="${2:-${AIAgentLaunch_GITHUB_REPOSITORY:-}}"
+SPARKLE_PUBLIC_ED_KEY="${SPARKLE_PUBLIC_ED_KEY:-}"
+REQUIRE_SPARKLE_PUBLIC_KEY="${REQUIRE_SPARKLE_PUBLIC_KEY:-0}"
 ARM64_TRIPLE="arm64-apple-macosx14.0"
 X86_64_TRIPLE="x86_64-apple-macosx14.0"
 
@@ -18,6 +20,11 @@ fi
 
 if [[ -z "$VERSION" ]]; then
   echo "Version is empty" >&2
+  exit 1
+fi
+
+if [[ "$REQUIRE_SPARKLE_PUBLIC_KEY" == "1" && -z "$SPARKLE_PUBLIC_ED_KEY" ]]; then
+  echo "Missing SPARKLE_PUBLIC_ED_KEY while REQUIRE_SPARKLE_PUBLIC_KEY=1" >&2
   exit 1
 fi
 
@@ -74,6 +81,15 @@ BLOCK
 )
 fi
 
+SPARKLE_PUBLIC_KEY_BLOCK=""
+if [[ -n "$SPARKLE_PUBLIC_ED_KEY" ]]; then
+  SPARKLE_PUBLIC_KEY_BLOCK=$(cat <<BLOCK
+    <key>SUPublicEDKey</key>
+    <string>$SPARKLE_PUBLIC_ED_KEY</string>
+BLOCK
+)
+fi
+
 cat > "$CONTENTS_DIR/Info.plist" <<EOF_PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -100,6 +116,7 @@ cat > "$CONTENTS_DIR/Info.plist" <<EOF_PLIST
     <key>LSUIElement</key>
     <true/>
 $SU_FEED_BLOCK
+$SPARKLE_PUBLIC_KEY_BLOCK
 </dict>
 </plist>
 EOF_PLIST

@@ -1,3 +1,4 @@
+import AgentLaunchCore
 import Foundation
 import Sparkle
 
@@ -14,8 +15,7 @@ final class SparkleUpdaterController: ObservableObject {
     }
 
     init(bundle: Bundle = .main) {
-        let hasFeedURL = (bundle.object(forInfoDictionaryKey: "SUFeedURL") as? String)?.isEmpty == false
-        guard hasFeedURL else {
+        guard SparkleConfiguration.canEnableUpdater(infoDictionary: bundle.infoDictionary ?? [:]) else {
             updaterController = nil
             return
         }

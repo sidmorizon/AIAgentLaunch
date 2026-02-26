@@ -90,11 +90,32 @@ jobs:
           print(f"Version bump validated: {previous or '(none)'} -> {current}")
           PY
 
+      - name: Validate Sparkle signing secrets
+        env:
+          SPARKLE_PUBLIC_ED_KEY: ${{ secrets.SPARKLE_PUBLIC_ED_KEY }}
+          SPARKLE_PRIVATE_ED_KEY: ${{ secrets.SPARKLE_PRIVATE_ED_KEY }}
+        run: |
+          if [[ -z "$SPARKLE_PUBLIC_ED_KEY" ]]; then
+            echo "Missing required secret: SPARKLE_PUBLIC_ED_KEY" >&2
+            exit 1
+          fi
+
+          if [[ -z "$SPARKLE_PRIVATE_ED_KEY" ]]; then
+            echo "Missing required secret: SPARKLE_PRIVATE_ED_KEY" >&2
+            exit 1
+          fi
+
       - name: Build universal app archives
+        env:
+          SPARKLE_PUBLIC_ED_KEY: ${{ secrets.SPARKLE_PUBLIC_ED_KEY }}
+          REQUIRE_SPARKLE_PUBLIC_KEY: "1"
         run: |
           scripts/package-macos-app.sh "${{ steps.version.outputs.version }}" "${{ github.repository }}"
 
       - name: Generate appcast
+        env:
+          SPARKLE_PRIVATE_ED_KEY: ${{ secrets.SPARKLE_PRIVATE_ED_KEY }}
+          REQUIRE_SPARKLE_SIGNING: "1"
         run: |
           scripts/generate-appcast.sh "${{ steps.version.outputs.version }}" "${{ github.repository }}"
 
