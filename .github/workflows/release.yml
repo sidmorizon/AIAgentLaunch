@@ -21,11 +21,11 @@ jobs:
         with:
           fetch-depth: 2
 
-      - name: Select Xcode 16
+      - name: Select Xcode 26.2
         run: |
-          XCODE_PATH="$(ls -d /Applications/Xcode_16*.app 2>/dev/null | sort -V | tail -n 1)"
+          XCODE_PATH="$(ls -d /Applications/Xcode_26.2*.app 2>/dev/null | sort -V | tail -n 1)"
           if [[ -z "$XCODE_PATH" ]]; then
-            echo "No Xcode 16 installation found on runner" >&2
+            echo "No Xcode 26.2 installation found on runner" >&2
             exit 1
           fi
           sudo xcode-select -s "$XCODE_PATH"
