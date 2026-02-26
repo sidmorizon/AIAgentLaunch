@@ -2,17 +2,28 @@ import AgentLaunchCore
 import AppKit
 import SwiftUI
 
+@MainActor
 struct MenuBarContentView: View {
     @StateObject private var viewModel: MenuBarViewModel
+    @StateObject private var sparkleUpdaterController: SparkleUpdaterController
     @State private var isShowingLaunchConfigPreview = false
+    private let appVersion: String
 
-    init(viewModel: MenuBarViewModel = MenuBarViewModel()) {
+    init(
+        viewModel: MenuBarViewModel = MenuBarViewModel(),
+        sparkleUpdaterController: SparkleUpdaterController = SparkleUpdaterController(),
+        appVersion: String = AppVersionProvider().currentVersion()
+    ) {
         _viewModel = StateObject(wrappedValue: viewModel)
+        _sparkleUpdaterController = StateObject(wrappedValue: sparkleUpdaterController)
+        self.appVersion = appVersion
     }
 
     var body: some View {
         ZStack {
             VStack(alignment: .leading, spacing: 14) {
+                headerSection
+
                 modeSection
 
                 if viewModel.mode == .proxy {
@@ -24,8 +35,6 @@ struct MenuBarContentView: View {
                 if let statusMessage = viewModel.statusMessage {
                     statusBanner(message: statusMessage)
                 }
-
-                footerSection
             }
             .padding(14)
             .frame(width: 372)
@@ -63,6 +72,40 @@ struct MenuBarContentView: View {
             if !canInspect {
                 isShowingLaunchConfigPreview = false
             }
+        }
+    }
+
+    private var headerSection: some View {
+        HStack(spacing: 8) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text("AIAgentLaunch")
+                    .font(.headline.weight(.semibold))
+                Text("v\(appVersion)")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+
+            Spacer()
+
+            Menu {
+                Button("检测升级") {
+                    sparkleUpdaterController.checkForUpdates()
+                }
+                .disabled(!sparkleUpdaterController.canCheckForUpdates)
+
+                Divider()
+
+                Button("退出") {
+                    NSApplication.shared.terminate(nil)
+                }
+            } label: {
+                Image(systemName: "ellipsis.circle")
+                    .font(.title3.weight(.semibold))
+                    .foregroundStyle(Color(red: 0.11, green: 0.52, blue: 0.84))
+                    .padding(4)
+            }
+            .menuStyle(.borderlessButton)
+            .help(sparkleUpdaterController.isConfigured ? "菜单" : "未配置升级源")
         }
     }
 
@@ -281,18 +324,6 @@ struct MenuBarContentView: View {
                 .stroke(Color.gray.opacity(0.25), lineWidth: 1)
         )
         .shadow(color: Color.black.opacity(0.16), radius: 14, x: 0, y: 8)
-    }
-
-    private var footerSection: some View {
-        HStack {
-            Spacer()
-            Button("Quit") {
-                NSApplication.shared.terminate(nil)
-            }
-            .buttonStyle(.plain)
-            .font(.caption)
-            .foregroundStyle(.secondary)
-        }
     }
 
     private func fieldLabel(_ text: String) -> some View {

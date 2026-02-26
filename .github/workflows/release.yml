@@ -1,0 +1,95 @@
+name: release
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - version
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: macos-14
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Resolve version
+        id: version
+        run: |
+          VERSION="$(tr -d '[:space:]' < version)"
+          if [[ -z "$VERSION" ]]; then
+            echo "version file is empty" >&2
+            exit 1
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Validate version bump
+        run: |
+          PREVIOUS_VERSION=""
+          if git cat-file -e HEAD^:version 2>/dev/null; then
+            PREVIOUS_VERSION="$(git show HEAD^:version | tr -d '[:space:]')"
+          fi
+
+          CURRENT_VERSION="${{ steps.version.outputs.version }}"
+
+          python3 - "$PREVIOUS_VERSION" "$CURRENT_VERSION" <<'PY'
+import sys
+
+previous, current = sys.argv[1], sys.argv[2]
+
+
+def parse(version: str) -> list[int]:
+    if not version:
+        return []
+    value = version.strip()
+    if value.startswith(("v", "V")):
+        value = value[1:]
+    parts = value.split(".")
+    parsed: list[int] = []
+    for part in parts:
+        if not part.isdigit():
+            raise SystemExit(f"Invalid version segment: {part}")
+        parsed.append(int(part))
+    return parsed
+
+if previous and parse(current) <= parse(previous):
+    raise SystemExit(
+        f"Version must increase. previous={previous}, current={current}"
+    )
+
+print(f"Version bump validated: {previous or '(none)'} -> {current}")
+PY
+
+      - name: Build app archive
+        run: |
+          scripts/package-macos-app.sh "${{ steps.version.outputs.version }}" "${{ github.repository }}"
+
+      - name: Generate appcast
+        run: |
+          scripts/generate-appcast.sh "${{ steps.version.outputs.version }}" "${{ github.repository }}"
+
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="v${{ steps.version.outputs.version }}"
+          ASSET="dist/AIAgentLaunch-${{ steps.version.outputs.version }}.zip"
+
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "Release already exists for $TAG" >&2
+            exit 1
+          fi
+
+          gh release create "$TAG" \
+            "$ASSET" \
+            "dist/appcast.xml" \
+            --title "AIAgentLaunch v${{ steps.version.outputs.version }}" \
+            --notes "Automated release for version ${{ steps.version.outputs.version }}"
