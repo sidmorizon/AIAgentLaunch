@@ -32,12 +32,23 @@ jobs:
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
       - name: Validate version bump
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
-          PREVIOUS_VERSION=""
-          if git cat-file -e HEAD^:version 2>/dev/null; then
-            PREVIOUS_VERSION="$(git show HEAD^:version | tr -d '[:space:]')"
+          PREVIOUS_TAG="$(gh release list \
+            -R "$GITHUB_REPOSITORY" \
+            --exclude-drafts \
+            --exclude-pre-releases \
+            --limit 1 \
+            --json tagName \
+            --jq '.[0].tagName' 2>/dev/null || true)"
+
+          if [[ "$PREVIOUS_TAG" == "null" ]]; then
+            PREVIOUS_TAG=""
           fi
 
+          PREVIOUS_VERSION="${PREVIOUS_TAG#v}"
+          PREVIOUS_VERSION="${PREVIOUS_VERSION#V}"
           CURRENT_VERSION="${{ steps.version.outputs.version }}"
 
           python3 - "$PREVIOUS_VERSION" "$CURRENT_VERSION" <<'PY'
