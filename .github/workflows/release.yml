@@ -41,32 +41,32 @@ jobs:
           CURRENT_VERSION="${{ steps.version.outputs.version }}"
 
           python3 - "$PREVIOUS_VERSION" "$CURRENT_VERSION" <<'PY'
-import sys
+          import sys
 
-previous, current = sys.argv[1], sys.argv[2]
+          previous, current = sys.argv[1], sys.argv[2]
 
 
-def parse(version: str) -> list[int]:
-    if not version:
-        return []
-    value = version.strip()
-    if value.startswith(("v", "V")):
-        value = value[1:]
-    parts = value.split(".")
-    parsed: list[int] = []
-    for part in parts:
-        if not part.isdigit():
-            raise SystemExit(f"Invalid version segment: {part}")
-        parsed.append(int(part))
-    return parsed
+          def parse(version: str) -> list[int]:
+              if not version:
+                  return []
+              value = version.strip()
+              if value.startswith(("v", "V")):
+                  value = value[1:]
+              parts = value.split(".")
+              parsed: list[int] = []
+              for part in parts:
+                  if not part.isdigit():
+                      raise SystemExit(f"Invalid version segment: {part}")
+                  parsed.append(int(part))
+              return parsed
 
-if previous and parse(current) <= parse(previous):
-    raise SystemExit(
-        f"Version must increase. previous={previous}, current={current}"
-    )
+          if previous and parse(current) <= parse(previous):
+              raise SystemExit(
+                  f"Version must increase. previous={previous}, current={current}"
+              )
 
-print(f"Version bump validated: {previous or '(none)'} -> {current}")
-PY
+          print(f"Version bump validated: {previous or '(none)'} -> {current}")
+          PY
 
       - name: Build app archive
         run: |
