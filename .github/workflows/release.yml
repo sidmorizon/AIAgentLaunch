@@ -90,7 +90,7 @@ jobs:
           print(f"Version bump validated: {previous or '(none)'} -> {current}")
           PY
 
-      - name: Build app archive
+      - name: Build universal app archives
         run: |
           scripts/package-macos-app.sh "${{ steps.version.outputs.version }}" "${{ github.repository }}"
 
@@ -103,7 +103,8 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           TAG="v${{ steps.version.outputs.version }}"
-          ASSET="dist/AIAgentLaunch-${{ steps.version.outputs.version }}.zip"
+          ASSET_ZIP="dist/AIAgentLaunch-${{ steps.version.outputs.version }}.zip"
+          ASSET_DMG="dist/AIAgentLaunch-${{ steps.version.outputs.version }}.dmg"
 
           if gh release view "$TAG" >/dev/null 2>&1; then
             echo "Release already exists for $TAG" >&2
@@ -111,7 +112,8 @@ jobs:
           fi
 
           gh release create "$TAG" \
-            "$ASSET" \
+            "$ASSET_ZIP" \
+            "$ASSET_DMG" \
             "dist/appcast.xml" \
             --title "AIAgentLaunch v${{ steps.version.outputs.version }}" \
             --notes "Automated release for version ${{ steps.version.outputs.version }}"

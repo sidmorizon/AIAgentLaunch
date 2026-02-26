@@ -5,6 +5,8 @@ APP_NAME="AIAgentLaunch"
 VERSION_FILE="version"
 VERSION="${1:-}"
 REPOSITORY="${2:-${AIAgentLaunch_GITHUB_REPOSITORY:-}}"
+ARM64_TRIPLE="arm64-apple-macosx14.0"
+X86_64_TRIPLE="x86_64-apple-macosx14.0"
 
 if [[ -z "$VERSION" ]]; then
   if [[ ! -f "$VERSION_FILE" ]]; then
@@ -19,7 +21,21 @@ if [[ -z "$VERSION" ]]; then
   exit 1
 fi
 
-swift build -c release --product "$APP_NAME"
+swift build -c release --product "$APP_NAME" --triple "$ARM64_TRIPLE"
+swift build -c release --product "$APP_NAME" --triple "$X86_64_TRIPLE"
+
+ARM64_BINARY=".build/arm64-apple-macosx/release/$APP_NAME"
+X86_64_BINARY=".build/x86_64-apple-macosx/release/$APP_NAME"
+
+if [[ ! -f "$ARM64_BINARY" ]]; then
+  echo "Missing arm64 binary: $ARM64_BINARY" >&2
+  exit 1
+fi
+
+if [[ ! -f "$X86_64_BINARY" ]]; then
+  echo "Missing x86_64 binary: $X86_64_BINARY" >&2
+  exit 1
+fi
 
 DIST_DIR="dist"
 APP_DIR="$DIST_DIR/$APP_NAME.app"
@@ -28,11 +44,18 @@ CONTENTS_DIR="$APP_DIR/Contents"
 rm -rf "$DIST_DIR"
 mkdir -p "$CONTENTS_DIR/MacOS" "$CONTENTS_DIR/Resources"
 
-cp ".build/release/$APP_NAME" "$CONTENTS_DIR/MacOS/$APP_NAME"
+lipo -create \
+  "$ARM64_BINARY" \
+  "$X86_64_BINARY" \
+  -output "$CONTENTS_DIR/MacOS/$APP_NAME"
 chmod +x "$CONTENTS_DIR/MacOS/$APP_NAME"
 cp "$VERSION_FILE" "$CONTENTS_DIR/Resources/version"
+lipo -info "$CONTENTS_DIR/MacOS/$APP_NAME"
 
-SPARKLE_FRAMEWORK_PATH="$(find .build -type d -path '*/release/Sparkle.framework' | head -n 1)"
+SPARKLE_FRAMEWORK_PATH=".build/arm64-apple-macosx/release/Sparkle.framework"
+if [[ ! -d "$SPARKLE_FRAMEWORK_PATH" ]]; then
+  SPARKLE_FRAMEWORK_PATH="$(find .build -type d -path '*/release/Sparkle.framework' | head -n 1)"
+fi
 if [[ -n "$SPARKLE_FRAMEWORK_PATH" ]]; then
   mkdir -p "$CONTENTS_DIR/Frameworks"
   cp -R "$SPARKLE_FRAMEWORK_PATH" "$CONTENTS_DIR/Frameworks/"
@@ -82,9 +105,30 @@ $SU_FEED_BLOCK
 EOF_PLIST
 
 ARCHIVE_NAME="$APP_NAME-$VERSION.zip"
+DMG_NAME="$APP_NAME-$VERSION.dmg"
 (
   cd "$DIST_DIR"
   ditto -c -k --sequesterRsrc --keepParent "$APP_NAME.app" "$ARCHIVE_NAME"
 )
 
+DMG_STAGING_DIR="$(mktemp -d)"
+cleanup() {
+  rm -rf "$DMG_STAGING_DIR"
+}
+trap cleanup EXIT
+
+cp -R "$APP_DIR" "$DMG_STAGING_DIR/$APP_NAME.app"
+ln -s /Applications "$DMG_STAGING_DIR/Applications"
+
+hdiutil create \
+  -volname "$APP_NAME" \
+  -srcfolder "$DMG_STAGING_DIR" \
+  -ov \
+  -format UDZO \
+  "$DIST_DIR/$DMG_NAME" >/dev/null
+
+trap - EXIT
+cleanup
+
 echo "Created $DIST_DIR/$ARCHIVE_NAME"
+echo "Created $DIST_DIR/$DMG_NAME"
