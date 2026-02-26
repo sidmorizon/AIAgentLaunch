@@ -15,6 +15,19 @@ final class AgentLauncherSourceTests: XCTestCase {
         )
     }
 
+    func testLaunchDoesNotUseStoredNSWorkspaceForAsyncOpenCall() throws {
+        let source = try String(contentsOf: agentLauncherSourceURL(), encoding: .utf8)
+
+        XCTAssertFalse(
+            source.contains("private let workspace: NSWorkspace"),
+            "Storing NSWorkspace on a main-actor isolated launcher can trigger strict-concurrency data-race diagnostics in CI."
+        )
+        XCTAssertTrue(
+            source.contains("let workspace = NSWorkspace.shared"),
+            "Launcher should resolve NSWorkspace locally before performing async open calls."
+        )
+    }
+
     private func agentLauncherSourceURL() -> URL {
         URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent() // Launch

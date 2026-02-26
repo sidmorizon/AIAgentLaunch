@@ -11,13 +11,10 @@ public protocol AgentLaunching {
 }
 
 public struct AgentLauncher: AgentLaunching {
-    private let workspace: NSWorkspace
-
-    public init(workspace: NSWorkspace = .shared) {
-        self.workspace = workspace
-    }
+    public init() {}
 
     public func launchApplication(bundleIdentifier: String, environmentVariables: [String: String]) async throws {
+        let workspace = NSWorkspace.shared
         guard let applicationURL = workspace.urlForApplication(withBundleIdentifier: bundleIdentifier) else {
             throw AgentLauncherError.failedToLaunch(bundleIdentifier: bundleIdentifier)
         }
