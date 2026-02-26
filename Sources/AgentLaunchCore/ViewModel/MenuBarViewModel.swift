@@ -209,15 +209,15 @@ public final class MenuBarViewModel: ObservableObject {
     private var hasPreparedProxyContext = false
 
     public init(
-        modelDiscovery: any ModelDiscovering = ModelDiscoveryService(),
-        launchRouter: any MenuBarLaunchRouting = DefaultMenuBarLaunchRouter(),
-        settingsStore: any MenuBarSettingsStoring = UserDefaultsMenuBarSettingsStore(),
-        apiKeyStore: any MenuBarAPIKeyStoring = KeychainMenuBarAPIKeyStore()
+        modelDiscovery: (any ModelDiscovering)? = nil,
+        launchRouter: (any MenuBarLaunchRouting)? = nil,
+        settingsStore: (any MenuBarSettingsStoring)? = nil,
+        apiKeyStore: (any MenuBarAPIKeyStoring)? = nil
     ) {
-        self.modelDiscovery = modelDiscovery
-        self.launchRouter = launchRouter
-        self.settingsStore = settingsStore
-        self.apiKeyStore = apiKeyStore
+        self.modelDiscovery = modelDiscovery ?? ModelDiscoveryService()
+        self.launchRouter = launchRouter ?? DefaultMenuBarLaunchRouter()
+        self.settingsStore = settingsStore ?? UserDefaultsMenuBarSettingsStore()
+        self.apiKeyStore = apiKeyStore ?? KeychainMenuBarAPIKeyStore()
 
         hydratePersistedState()
     }
