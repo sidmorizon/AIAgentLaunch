@@ -1,4 +1,5 @@
 import Foundation
+import LocalAuthentication
 import Security
 
 public enum KeychainAuthPolicy: Sendable, Equatable {
@@ -54,13 +55,17 @@ public struct SecurityKeychainAPI: KeychainAPI {
         }
 
         if addStatus == errSecDuplicateItem {
-            let attributes: [String: Any] = [
-                kSecValueData as String: value
-            ]
-            let updateStatus = SecItemUpdate(baseQuery as CFDictionary, attributes as CFDictionary)
-            guard updateStatus == errSecSuccess else {
-                throw KeychainAPIError.unexpectedStatus(updateStatus)
+            // Re-create duplicate items to ensure access policy migrations take effect.
+            let deleteStatus = SecItemDelete(baseQuery as CFDictionary)
+            guard deleteStatus == errSecSuccess || deleteStatus == errSecItemNotFound else {
+                throw KeychainAPIError.unexpectedStatus(deleteStatus)
             }
+
+            let recreateStatus = SecItemAdd(addQuery as CFDictionary, nil)
+            guard recreateStatus == errSecSuccess else {
+                throw KeychainAPIError.unexpectedStatus(recreateStatus)
+            }
+
             return
         }
 
@@ -71,8 +76,9 @@ public struct SecurityKeychainAPI: KeychainAPI {
         var query = makeBaseQuery(account: account, service: service)
         query[kSecReturnData as String] = true
         query[kSecMatchLimit as String] = kSecMatchLimitOne
-        query[kSecUseAuthenticationUI as String] = kSecUseAuthenticationUIAllow
-        query[kSecUseOperationPrompt as String] = "Authenticate to access API Key"
+        let authenticationContext = LAContext()
+        authenticationContext.interactionNotAllowed = true
+        query[kSecUseAuthenticationContext as String] = authenticationContext
 
         var result: CFTypeRef?
         let status = SecItemCopyMatching(query as CFDictionary, &result)

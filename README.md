@@ -52,9 +52,8 @@ make dev
 
 ## Security Notes
 
-- API Key 存储在 Keychain，不落盘到 `UserDefaults`。
-- Keychain 访问策略优先生物识别（`biometryCurrentSet`），不可用时降级为 `userPresence`。
-- 当运行环境缺少受保护 Keychain 所需 entitlement（常见于 `swift run`）时，会自动降级为 `kSecAttrAccessibleWhenUnlockedThisDeviceOnly` 存储以避免 `OSStatus -34018`。
+- API Key 与 Base URL / Model 一样，持久化到 `UserDefaults`（普通本地存储）。
+- 应用不再依赖 Keychain 读取 API Key，启动不会出现 Keychain 访问弹窗。
 - CODEX 的代理启动流程会临时写入 `~/.codex/config.toml`，随后在应用启动通知或超时路径中自动恢复原始配置。
 - CLAUDE 的启动流程为 Env-Only：仅在启动进程时注入环境变量，不读取也不改写 `claude_desktop_config.json`。
 
@@ -65,4 +64,4 @@ make dev
   - CLAUDE Desktop（`com.anthropic.claudefordesktop`）
 - CLAUDE 代理模式会注入兼容环境变量（如 `ANTHROPIC_API_KEY`、`OPENAI_API_KEY`、`ANTHROPIC_BASE_URL`、`OPENAI_BASE_URL` 等）；部分非官方键可能被客户端忽略。
 - 模型配置写入使用占位字段映射，后续可按 Provider 的真实字段做细化校对。
-- 菜单栏输入状态（Base URL、API Key、Model）当前不做持久化。
+- 菜单栏输入状态（Base URL、API Key、Model、Reasoning）会持久化到 `UserDefaults`。

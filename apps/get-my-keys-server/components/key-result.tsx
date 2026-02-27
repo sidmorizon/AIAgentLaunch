@@ -101,9 +101,9 @@ export function KeyResult({ keyValue, maskedKey }: KeyResultProps) {
       <div className="key-header">
         <p className="eyebrow">Runtime Credentials</p>
         <h2>Your Key</h2>
-        <a className="copy-button secondary launcher-download-button" href={AGENT_LAUNCHER_DOWNLOAD_API_PATH}>
+        {/* <a className="copy-button secondary launcher-download-button" href={AGENT_LAUNCHER_DOWNLOAD_API_PATH}>
           下载 Agent 启动器
-        </a>
+        </a> */}
       </div>
 
       <div className="credential-block">
@@ -114,7 +114,7 @@ export function KeyResult({ keyValue, maskedKey }: KeyResultProps) {
             onClick={() => handleCopy(baseUrl, "baseUrl")}
             type="button"
           >
-            {copiedTarget === "baseUrl" ? "已复制 Base URL" : "复制 Base URL"}
+            {copiedTarget === "baseUrl" ? "已复制" : "复制"}
           </button>
         </div>
         <input
@@ -132,7 +132,7 @@ export function KeyResult({ keyValue, maskedKey }: KeyResultProps) {
         <div className="credential-title-row">
           <p>API Key</p>
           <button className="copy-button" onClick={() => handleCopy(keyValue, "key")} type="button">
-            {copiedTarget === "key" ? "已复制 Key" : "复制 Key"}
+            {copiedTarget === "key" ? "已复制" : "复制"}
           </button>
         </div>
         <p className="masked-key">{maskedKey}</p>

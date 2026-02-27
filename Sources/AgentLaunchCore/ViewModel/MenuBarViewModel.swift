@@ -94,19 +94,23 @@ public protocol MenuBarAPIKeyStoring {
     func saveAPIKey(_ apiKey: String) throws
 }
 
-public final class KeychainMenuBarAPIKeyStore: MenuBarAPIKeyStoring {
-    private let keychainService: KeychainService
+public final class UserDefaultsMenuBarAPIKeyStore: MenuBarAPIKeyStoring {
+    private enum Keys {
+        static let apiKey = "menu_bar.api_key"
+    }
 
-    public init(keychainService: KeychainService = KeychainService()) {
-        self.keychainService = keychainService
+    private let defaults: UserDefaults
+
+    public init(defaults: UserDefaults = .standard) {
+        self.defaults = defaults
     }
 
     public func loadAPIKey() throws -> String? {
-        try keychainService.readAPIKey()
+        defaults.string(forKey: Keys.apiKey)
     }
 
     public func saveAPIKey(_ apiKey: String) throws {
-        try keychainService.saveAPIKey(apiKey)
+        defaults.set(apiKey, forKey: Keys.apiKey)
     }
 }
 
@@ -267,7 +271,7 @@ public final class MenuBarViewModel: ObservableObject {
         self.launchConfigurationValidator = launchConfigurationValidator ?? LaunchConfigurationValidationService()
         self.launchRouter = launchRouter ?? DefaultMenuBarLaunchRouter()
         self.settingsStore = settingsStore ?? UserDefaultsMenuBarSettingsStore()
-        self.apiKeyStore = apiKeyStore ?? KeychainMenuBarAPIKeyStore()
+        self.apiKeyStore = apiKeyStore ?? UserDefaultsMenuBarAPIKeyStore()
 
         hydratePersistedState()
     }
@@ -471,7 +475,7 @@ public final class MenuBarViewModel: ObservableObject {
                     apiKeyMasked = persistedAPIKey
                 }
             } catch {
-                setStatusMessage("Keychain error: \(resolvedErrorMessage(from: error))", isError: true)
+                setStatusMessage("Storage error: \(resolvedErrorMessage(from: error))", isError: true)
             }
         }
 
@@ -529,7 +533,7 @@ public final class MenuBarViewModel: ObservableObject {
         do {
             try apiKeyStore.saveAPIKey(apiKeyMasked)
         } catch {
-            setStatusMessage("Keychain error: \(resolvedErrorMessage(from: error))", isError: true)
+            setStatusMessage("Storage error: \(resolvedErrorMessage(from: error))", isError: true)
         }
     }
 

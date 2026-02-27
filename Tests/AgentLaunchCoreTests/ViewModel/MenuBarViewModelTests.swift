@@ -112,7 +112,7 @@ final class MenuBarViewModelTests: XCTestCase {
         )
     }
 
-    func testPersistsAPIKeyToKeychainStoreAfterSuccessfulConnectionTest() async {
+    func testPersistsAPIKeyToLocalStoreAfterSuccessfulConnectionTest() async {
         let apiKeyStore = InMemoryAPIKeyStore()
         let viewModel = MenuBarViewModel(
             modelDiscovery: StubModelDiscovery(result: .success(["gpt-5"])),
@@ -138,7 +138,7 @@ final class MenuBarViewModelTests: XCTestCase {
         XCTAssertEqual(apiKeyStore.saveCalls.last, "sk-updated")
     }
 
-    func testShowsKeychainLoadErrorInStatusMessageAfterPanelAppear() async {
+    func testShowsStorageLoadErrorInStatusMessageAfterPanelAppear() async {
         let apiKeyStore = InMemoryAPIKeyStore(
             storedAPIKey: nil,
             loadError: KeychainAPIError.unexpectedStatus(-25308)
@@ -160,11 +160,11 @@ final class MenuBarViewModelTests: XCTestCase {
         await viewModel.handlePanelPresented()
 
         XCTAssertTrue(viewModel.isStatusError)
-        XCTAssertTrue(viewModel.statusMessage?.contains("Keychain error") == true)
+        XCTAssertTrue(viewModel.statusMessage?.contains("Storage error") == true)
         XCTAssertTrue(viewModel.statusMessage?.contains("-25308") == true)
     }
 
-    func testShowsKeychainSaveErrorInStatusMessageWhenPersistingAfterSuccessfulConnectionTest() async {
+    func testShowsStorageSaveErrorInStatusMessageWhenPersistingAfterSuccessfulConnectionTest() async {
         let apiKeyStore = InMemoryAPIKeyStore(
             storedAPIKey: nil,
             saveError: KeychainAPIError.unexpectedStatus(-25308)
@@ -189,7 +189,7 @@ final class MenuBarViewModelTests: XCTestCase {
         await viewModel.testConnection()
 
         XCTAssertTrue(viewModel.isStatusError)
-        XCTAssertTrue(viewModel.statusMessage?.contains("Keychain error") == true)
+        XCTAssertTrue(viewModel.statusMessage?.contains("Storage error") == true)
         XCTAssertTrue(viewModel.statusMessage?.contains("-25308") == true)
     }
 

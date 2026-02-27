@@ -2,37 +2,35 @@ import XCTest
 @testable import AgentLaunchCore
 
 final class KeychainServiceTests: XCTestCase {
-    func testAccessControlPrefersBiometryCurrentSet() {
-        let service = KeychainService(
-            keychainAPI: InMemoryKeychainAPI(),
-            capability: FixedBiometryCapability(isBiometryAvailable: true)
-        )
+    func testAccessControlUsesNonInteractivePolicy() {
+        let service = KeychainService(keychainAPI: InMemoryKeychainAPI())
 
-        XCTAssertEqual(service.resolvePolicy(), .biometryCurrentSet)
+        XCTAssertEqual(service.resolvePolicy(), .none)
     }
 
-    func testFallbackToUserPresenceWhenBiometryUnavailable() {
-        let service = KeychainService(
-            keychainAPI: InMemoryKeychainAPI(),
-            capability: FixedBiometryCapability(isBiometryAvailable: false)
-        )
+    func testSaveAPIKeyUsesNonInteractivePolicy() throws {
+        let keychain = RecordingKeychainAPI()
+        let service = KeychainService(keychainAPI: keychain)
 
-        XCTAssertEqual(service.resolvePolicy(), .userPresence)
+        try service.saveAPIKey("sk-test")
+        XCTAssertEqual(keychain.policies, [.none])
     }
 
-    func testSaveAPIKeyRetriesWhenMissingEntitlement() throws {
-        let keychain = RetryOnMissingEntitlementKeychainAPI()
+    func testReadAPIKeyReturnsNilWhenItemNotFound() throws {
         let service = KeychainService(
-            keychainAPI: keychain,
-            capability: FixedBiometryCapability(isBiometryAvailable: true)
+            keychainAPI: FailingReadKeychainAPI(status: errSecItemNotFound)
         )
 
-        XCTAssertNoThrow(try service.saveAPIKey("sk-test"))
+        XCTAssertNil(try service.readAPIKey())
     }
-}
 
-private struct FixedBiometryCapability: BiometryCapabilityChecking {
-    let isBiometryAvailable: Bool
+    func testReadAPIKeyReturnsNilWhenAuthenticationIsRequired() throws {
+        let service = KeychainService(
+            keychainAPI: FailingReadKeychainAPI(status: errSecInteractionNotAllowed)
+        )
+
+        XCTAssertNil(try service.readAPIKey())
+    }
 }
 
 private final class InMemoryKeychainAPI: KeychainAPI {
@@ -42,11 +40,21 @@ private final class InMemoryKeychainAPI: KeychainAPI {
     }
 }
 
-private final class RetryOnMissingEntitlementKeychainAPI: KeychainAPI {
+private struct FailingReadKeychainAPI: KeychainAPI {
+    let status: OSStatus
+
+    func upsertGenericPassword(account: String, service: String, value: Data, authPolicy: KeychainAuthPolicy) throws {}
+
+    func readGenericPassword(account: String, service: String) throws -> Data {
+        throw KeychainAPIError.unexpectedStatus(status)
+    }
+}
+
+private final class RecordingKeychainAPI: KeychainAPI, @unchecked Sendable {
+    private(set) var policies: [KeychainAuthPolicy] = []
+
     func upsertGenericPassword(account: String, service: String, value: Data, authPolicy: KeychainAuthPolicy) throws {
-        if authPolicy == .biometryCurrentSet {
-            throw KeychainAPIError.unexpectedStatus(errSecMissingEntitlement)
-        }
+        policies.append(authPolicy)
     }
 
     func readGenericPassword(account: String, service: String) throws -> Data {
