@@ -25,6 +25,9 @@ cp .env.example .env
 - `KEY_SYNC_YAML_FILE_PATH`
 - `AGENT_LAUNCHER_FILE_PATH`
 
+可选环境变量：
+- `KEY_PERSIST_LOG_FILE_PATH`（记录 YAML 同步触发的 `cliproxyapi` 重启执行与错误日志；默认 `${KEY_PERSIST_FILE_PATH}.log`）
+
 说明：
 - 前端使用的 Google Client ID 来自 `GOOGLE_OAUTH_CLIENT_ID`（通过 Next.js 暴露为 `NEXT_PUBLIC_GOOGLE_OAUTH_CLIENT_ID`）。
 - 若配置缺失，服务仍可启动；前端会显示配置错误，`/api/key` 返回 `SERVER_CONFIG_MISSING`。

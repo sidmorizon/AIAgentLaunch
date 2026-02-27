@@ -1,10 +1,14 @@
 import path from "node:path";
 import { execFile } from "node:child_process";
-import { mkdir, open, readFile, rename, rm, writeFile } from "node:fs/promises";
+import { appendFile, mkdir, open, readFile, rename, rm, writeFile } from "node:fs/promises";
 import type { FileHandle } from "node:fs/promises";
 import { promisify } from "node:util";
 
-import { KEY_PERSIST_FILE_PATH, KEY_SYNC_YAML_FILE_PATH } from "../shared/constants";
+import {
+  KEY_PERSIST_FILE_PATH,
+  KEY_PERSIST_LOG_FILE_PATH,
+  KEY_SYNC_YAML_FILE_PATH,
+} from "../shared/constants";
 
 const LOCK_RETRY_INTERVAL_MS = 20;
 const LOCK_RETRY_LIMIT = 250;
@@ -16,11 +20,16 @@ type PersistGeneratedKeyInput = {
   key: string;
   keyFilePath?: string;
   syncYamlPath?: string;
+  logFilePath?: string;
 };
 
 export async function persistGeneratedKey(input: PersistGeneratedKeyInput): Promise<void> {
   const keyFilePath = resolveRuntimePath(input.keyFilePath ?? KEY_PERSIST_FILE_PATH);
   const syncYamlPath = resolveOptionalPath(input.syncYamlPath ?? KEY_SYNC_YAML_FILE_PATH);
+  const configuredLogFilePath = resolveOptionalPath(
+    input.logFilePath ?? KEY_PERSIST_LOG_FILE_PATH,
+  );
+  const logFilePath = configuredLogFilePath ?? `${keyFilePath}.log`;
 
   await withFileLock(`${keyFilePath}.lock`, async () => {
     const existingKeys = await readDedupedLines(keyFilePath);
@@ -40,6 +49,7 @@ export async function persistGeneratedKey(input: PersistGeneratedKeyInput): Prom
     await syncApiKeysYamlIfExists({
       yamlFilePath: syncYamlPath,
       persistedKeys,
+      logFilePath,
     });
   });
 }
@@ -47,6 +57,7 @@ export async function persistGeneratedKey(input: PersistGeneratedKeyInput): Prom
 async function syncApiKeysYamlIfExists(input: {
   yamlFilePath: string;
   persistedKeys: string[];
+  logFilePath: string;
 }): Promise<void> {
   const yamlSource = await readFileIfExists(input.yamlFilePath);
   if (yamlSource === null) {
@@ -70,15 +81,38 @@ async function syncApiKeysYamlIfExists(input: {
     throw new Error("SYNC_YAML_MISMATCH");
   }
 
-  await restartCliproxyApiServiceIfAvailable();
+  await restartCliproxyApiServiceIfAvailable(input.logFilePath);
 }
 
-async function restartCliproxyApiServiceIfAvailable(): Promise<void> {
+async function restartCliproxyApiServiceIfAvailable(logFilePath: string): Promise<void> {
+  await appendRuntimeLog(
+    logFilePath,
+    "INFO",
+    "running restart command: systemctl --user restart cliproxyapi.service",
+  );
+
   try {
     await execFileAsync("bash", ["-lc", RESTART_CLIPROXYAPI_SCRIPT]);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    console.warn(`cliproxyapi restart skipped due to error: ${message}`);
+    await appendRuntimeLog(logFilePath, "ERROR", `cliproxyapi restart failed: ${message}`);
+  }
+}
+
+async function appendRuntimeLog(
+  logFilePath: string,
+  level: "INFO" | "ERROR",
+  message: string,
+): Promise<void> {
+  const timestamp = new Date().toISOString();
+  const line = `[${timestamp}] [${level}] ${message}\n`;
+
+  try {
+    await mkdir(path.dirname(logFilePath), { recursive: true });
+    await appendFile(logFilePath, line, "utf8");
+  } catch (error) {
+    const fallback = error instanceof Error ? error.message : String(error);
+    console.error(`failed to write runtime log file ${logFilePath}: ${fallback}`);
   }
 }
 

@@ -2,7 +2,7 @@ import path from "node:path";
 import { mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const execFileMock = vi.hoisted(() => vi.fn());
 
@@ -24,6 +24,10 @@ describe("persistGeneratedKey", () => {
         callback(null, "", "");
       },
     );
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
   });
 
   it("deduplicates persisted keys and verifies saved content", async () => {
@@ -73,6 +77,7 @@ describe("persistGeneratedKey", () => {
     const baseDir = await mkdtemp(path.join(tmpdir(), "get-my-keys-yaml-"));
     const keyFilePath = path.join(baseDir, "keys.txt");
     const yamlPath = path.join(baseDir, "config.yaml");
+    const logFilePath = path.join(baseDir, "restart.log");
 
     await writeFile(
       yamlPath,
@@ -88,9 +93,24 @@ describe("persistGeneratedKey", () => {
       "utf8",
     );
 
-    await persistGeneratedKey({ key: "1k-new-a@onekey.so", keyFilePath, syncYamlPath: yamlPath });
-    await persistGeneratedKey({ key: "1k-new-a@onekey.so", keyFilePath, syncYamlPath: yamlPath });
-    await persistGeneratedKey({ key: "1k-new-b@onekey.so", keyFilePath, syncYamlPath: yamlPath });
+    await persistGeneratedKey({
+      key: "1k-new-a@onekey.so",
+      keyFilePath,
+      syncYamlPath: yamlPath,
+      logFilePath,
+    });
+    await persistGeneratedKey({
+      key: "1k-new-a@onekey.so",
+      keyFilePath,
+      syncYamlPath: yamlPath,
+      logFilePath,
+    });
+    await persistGeneratedKey({
+      key: "1k-new-b@onekey.so",
+      keyFilePath,
+      syncYamlPath: yamlPath,
+      logFilePath,
+    });
 
     const yamlContent = await readFile(yamlPath, "utf8");
 
@@ -110,12 +130,16 @@ describe("persistGeneratedKey", () => {
       ],
       expect.any(Function),
     );
+
+    const logContent = await readFile(logFilePath, "utf8");
+    expect(logContent).toContain("running restart command: systemctl --user restart cliproxyapi.service");
   });
 
   it("does not restart service when yaml content has no effective change", async () => {
     const baseDir = await mkdtemp(path.join(tmpdir(), "get-my-keys-yaml-nochange-"));
     const keyFilePath = path.join(baseDir, "keys.txt");
     const yamlPath = path.join(baseDir, "config.yaml");
+    const logFilePath = path.join(baseDir, "restart.log");
 
     await writeFile(
       yamlPath,
@@ -127,15 +151,22 @@ describe("persistGeneratedKey", () => {
       "utf8",
     );
 
-    await persistGeneratedKey({ key: "1k-stable@onekey.so", keyFilePath, syncYamlPath: yamlPath });
+    await persistGeneratedKey({
+      key: "1k-stable@onekey.so",
+      keyFilePath,
+      syncYamlPath: yamlPath,
+      logFilePath,
+    });
 
     expect(execFileMock).not.toHaveBeenCalled();
+    await expect(readFile(logFilePath, "utf8")).rejects.toMatchObject({ code: "ENOENT" });
   });
 
   it("does not fail key persistence when service restart command fails", async () => {
     const baseDir = await mkdtemp(path.join(tmpdir(), "get-my-keys-yaml-restart-fail-"));
     const keyFilePath = path.join(baseDir, "keys.txt");
     const yamlPath = path.join(baseDir, "config.yaml");
+    const logFilePath = path.join(baseDir, "restart.log");
 
     execFileMock.mockImplementationOnce(
       (
@@ -157,11 +188,15 @@ describe("persistGeneratedKey", () => {
     );
 
     await expect(
-      persistGeneratedKey({ key: "1k-fresh@onekey.so", keyFilePath, syncYamlPath: yamlPath }),
+      persistGeneratedKey({ key: "1k-fresh@onekey.so", keyFilePath, syncYamlPath: yamlPath, logFilePath }),
     ).resolves.toBeUndefined();
 
     const yamlContent = await readFile(yamlPath, "utf8");
     expect(yamlContent).toContain("  - 1k-fresh@onekey.so");
     expect(yamlContent).not.toContain("old@onekey.so");
+
+    const logContent = await readFile(logFilePath, "utf8");
+    expect(logContent).toContain("running restart command: systemctl --user restart cliproxyapi.service");
+    expect(logContent).toContain("cliproxyapi restart failed: restart failed");
   });
 });

@@ -12,5 +12,6 @@ export const KEY_SALT = process.env.KEY_SALT?.trim() ?? "";
 export const KEY_PREFIX = process.env.KEY_PREFIX?.trim() ?? "";
 export const ALLOWED_EMAIL_SUFFIX = process.env.ALLOWED_EMAIL_SUFFIX?.trim() ?? "";
 export const KEY_PERSIST_FILE_PATH = process.env.KEY_PERSIST_FILE_PATH?.trim() ?? "";
+export const KEY_PERSIST_LOG_FILE_PATH = process.env.KEY_PERSIST_LOG_FILE_PATH?.trim() ?? "";
 export const KEY_SYNC_YAML_FILE_PATH = process.env.KEY_SYNC_YAML_FILE_PATH?.trim() ?? "";
 export const AGENT_LAUNCHER_FILE_PATH = process.env.AGENT_LAUNCHER_FILE_PATH?.trim() ?? "";
