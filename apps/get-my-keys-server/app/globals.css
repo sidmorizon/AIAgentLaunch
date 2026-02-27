@@ -191,10 +191,41 @@ p {
   border: 1px solid rgba(31, 94, 194, 0.2);
 }
 
+.base-url-input {
+  width: 100%;
+}
+
+.base-url-input:focus-visible {
+  outline: 2px solid #2568d8;
+  outline-offset: 2px;
+}
+
 .masked-key {
   color: #0b2c48;
   background: rgba(255, 255, 255, 0.72);
   border: 1px solid rgba(15, 72, 111, 0.16);
+}
+
+.api-test-panel {
+  display: grid;
+  gap: 10px;
+}
+
+.copy-button:disabled {
+  opacity: 0.72;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: 0 6px 14px rgba(19, 62, 100, 0.2);
+}
+
+.model-list {
+  margin: 0;
+  padding: 0 0 0 18px;
+  color: #0b2c48;
+  display: grid;
+  gap: 4px;
+  font-family: var(--font-mono), "Menlo", monospace;
+  font-size: 13px;
 }
 
 .copy-button {
@@ -213,6 +244,14 @@ p {
 
 .copy-button.secondary {
   background: linear-gradient(130deg, #b6d7ff, #cbf6ef);
+}
+
+.launcher-download-button {
+  margin-top: 12px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  text-decoration: none;
 }
 
 .copy-button:hover {

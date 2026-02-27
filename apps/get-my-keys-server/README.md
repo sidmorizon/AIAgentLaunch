@@ -23,10 +23,12 @@ cp .env.example .env
 - `ALLOWED_EMAIL_SUFFIX`
 - `KEY_PERSIST_FILE_PATH`
 - `KEY_SYNC_YAML_FILE_PATH`
+- `AGENT_LAUNCHER_FILE_PATH`
 
 说明：
 - 前端使用的 Google Client ID 来自 `GOOGLE_OAUTH_CLIENT_ID`（通过 Next.js 暴露为 `NEXT_PUBLIC_GOOGLE_OAUTH_CLIENT_ID`）。
 - 若配置缺失，服务仍可启动；前端会显示配置错误，`/api/key` 返回 `SERVER_CONFIG_MISSING`。
+- “下载 Agent 启动器”按钮会调用 `GET /get-my-keys/api/agent-launcher`，读取 `AGENT_LAUNCHER_FILE_PATH` 指向的本地文件并触发下载。
 
 ## Key 生成规则
 

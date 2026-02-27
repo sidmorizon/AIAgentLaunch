@@ -59,7 +59,7 @@ final class ConfigTransactionTests: XCTestCase {
 
         let temporaryConfigurationText = AgentConfigRenderer().renderTemporaryConfiguration(
             from: AgentProxyLaunchConfig(
-                apiBaseURL: URL(string: "https://llm-api.onekeytest.com/v1")!,
+                apiBaseURL: URL(string: "https://hello.example.com/v1")!,
                 providerAPIKey: "sk-temp",
                 modelIdentifier: "gpt-5.3-codex",
                 reasoningLevel: .high
@@ -97,7 +97,7 @@ final class ConfigTransactionTests: XCTestCase {
 
         let temporaryConfigurationText = AgentConfigRenderer().renderTemporaryConfiguration(
             from: AgentProxyLaunchConfig(
-                apiBaseURL: URL(string: "https://llm-api.onekeytest.com/v1")!,
+                apiBaseURL: URL(string: "https://hello.example.com/v1")!,
                 providerAPIKey: "sk-temp",
                 modelIdentifier: "gpt-5.3-codex",
                 reasoningLevel: .high
@@ -112,7 +112,7 @@ final class ConfigTransactionTests: XCTestCase {
         XCTAssertEqual(mergedConfigurationText.components(separatedBy: "[model_providers.\(AgentProxyConfigDefaults.profileIdentifier)]").count - 1, 1)
         XCTAssertFalse(mergedConfigurationText.contains("base_url = \"https://old.example.com/v1\""))
         XCTAssertFalse(mergedConfigurationText.contains("env_key= \"OLD_ENV_KEY\""))
-        XCTAssertTrue(mergedConfigurationText.contains("base_url = \"https://llm-api.onekeytest.com/v1\""))
+        XCTAssertTrue(mergedConfigurationText.contains("base_url = \"https://hello.example.com/v1\""))
         XCTAssertTrue(mergedConfigurationText.contains("env_key= \"\(AgentProxyConfigDefaults.apiKeyEnvironmentVariableName)\""))
     }
 
@@ -138,7 +138,7 @@ final class ConfigTransactionTests: XCTestCase {
 
         let temporaryConfigurationText = AgentConfigRenderer().renderTemporaryConfiguration(
             from: AgentProxyLaunchConfig(
-                apiBaseURL: URL(string: "https://llm-api.onekeytest.com/v1")!,
+                apiBaseURL: URL(string: "https://hello.example.com/v1")!,
                 providerAPIKey: "sk-temp",
                 modelIdentifier: "gpt-5.3-codex",
                 reasoningLevel: .high
@@ -167,7 +167,7 @@ final class ConfigTransactionTests: XCTestCase {
 
         let temporaryConfigurationText = AgentConfigRenderer().renderTemporaryConfiguration(
             from: AgentProxyLaunchConfig(
-                apiBaseURL: URL(string: "https://llm-api.onekeytest.com/v1")!,
+                apiBaseURL: URL(string: "https://hello.example.com/v1")!,
                 providerAPIKey: "sk-temp",
                 modelIdentifier: "gpt-5.3-codex",
                 reasoningLevel: .high
