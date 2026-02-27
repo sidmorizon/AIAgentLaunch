@@ -4,6 +4,19 @@ import { AppError } from "../../lib/server/errors";
 
 const verifyGoogleTokenMock = vi.hoisted(() => vi.fn());
 const ensureSupportedEmailMock = vi.hoisted(() => vi.fn());
+const persistGeneratedKeyMock = vi.hoisted(() => vi.fn());
+
+vi.mock("@/lib/shared/constants", () => ({
+  NEXT_BASE_PATH: "/get-my-keys",
+  KEY_API_PATH: "/get-my-keys/api/key",
+  COPY_FEEDBACK_MS: 1500,
+  GOOGLE_OAUTH_CLIENT_ID: "test-google-client-id",
+  KEY_SALT: "test-key-salt",
+  KEY_PREFIX: "1k-",
+  ALLOWED_EMAIL_SUFFIX: "@onekey.so",
+  KEY_PERSIST_FILE_PATH: "data/get-my-keys/generated-keys.txt",
+  KEY_SYNC_YAML_FILE_PATH: "data/get-my-keys/router-config.yaml",
+}));
 
 vi.mock("../../lib/server/google-auth", () => ({
   verifyGoogleToken: verifyGoogleTokenMock,
@@ -13,12 +26,17 @@ vi.mock("../../lib/server/authz-email", () => ({
   ensureSupportedEmail: ensureSupportedEmailMock,
 }));
 
+vi.mock("../../lib/server/key-persistence", () => ({
+  persistGeneratedKey: persistGeneratedKeyMock,
+}));
+
 import { POST } from "../../app/api/key/route";
 
 describe("POST /api/key", () => {
   beforeEach(() => {
     verifyGoogleTokenMock.mockReset();
     ensureSupportedEmailMock.mockReset();
+    persistGeneratedKeyMock.mockReset();
   });
 
   it("returns 400 when token is missing", async () => {
@@ -126,8 +144,8 @@ describe("POST /api/key", () => {
 
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toEqual({
-      key: "1k-KJ4eTuzOyRZ4KPiuWNBQbI_bokLBnqXhcnnHDfQoP5Q-alice@onekey.so",
-      maskedKey: "1k-KJ4****************************************************y.so",
+      key: "1k-rWzyN3LJGY1rlFcqkA9kXhs9Y00jQA8ieiIGlRDdEoM-alice@onekey.so",
+      maskedKey: "1k-rWz****************************************************y.so",
       profile: {
         sub: "sub-123",
         email: "alice@onekey.so",
@@ -135,5 +153,10 @@ describe("POST /api/key", () => {
     });
 
     expect(ensureSupportedEmailMock).toHaveBeenCalledWith("alice@onekey.so", true);
+    expect(persistGeneratedKeyMock).toHaveBeenCalledWith({
+      key: "1k-rWzyN3LJGY1rlFcqkA9kXhs9Y00jQA8ieiIGlRDdEoM-alice@onekey.so",
+      keyFilePath: "data/get-my-keys/generated-keys.txt",
+      syncYamlPath: "data/get-my-keys/router-config.yaml",
+    });
   });
 });

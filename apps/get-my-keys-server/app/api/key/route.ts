@@ -1,13 +1,52 @@
 import { NextResponse } from "next/server";
 
-import { KEY_SALT } from "@/lib/shared/constants";
+import {
+  ALLOWED_EMAIL_SUFFIX,
+  GOOGLE_OAUTH_CLIENT_ID,
+  KEY_PERSIST_FILE_PATH,
+  KEY_PREFIX,
+  KEY_SALT,
+  KEY_SYNC_YAML_FILE_PATH,
+} from "@/lib/shared/constants";
 import { maskKey } from "@/lib/shared/mask-key";
 import { ensureSupportedEmail } from "@/lib/server/authz-email";
 import { buildKey } from "@/lib/server/keygen";
 import { AppError, isAppError } from "@/lib/server/errors";
 import { verifyGoogleToken } from "@/lib/server/google-auth";
+import { persistGeneratedKey } from "@/lib/server/key-persistence";
 
 export const runtime = "nodejs";
+
+function ensureServerConfigReady(): void {
+  const missingConfig: string[] = [];
+
+  if (!GOOGLE_OAUTH_CLIENT_ID) {
+    missingConfig.push("GOOGLE_OAUTH_CLIENT_ID");
+  }
+  if (!KEY_SALT) {
+    missingConfig.push("KEY_SALT");
+  }
+  if (!KEY_PREFIX) {
+    missingConfig.push("KEY_PREFIX");
+  }
+  if (!ALLOWED_EMAIL_SUFFIX) {
+    missingConfig.push("ALLOWED_EMAIL_SUFFIX");
+  }
+  if (!KEY_PERSIST_FILE_PATH) {
+    missingConfig.push("KEY_PERSIST_FILE_PATH");
+  }
+  if (!KEY_SYNC_YAML_FILE_PATH) {
+    missingConfig.push("KEY_SYNC_YAML_FILE_PATH");
+  }
+
+  if (missingConfig.length > 0) {
+    throw new AppError(
+      "SERVER_CONFIG_MISSING",
+      `SERVER_CONFIG_MISSING: missing ${missingConfig.join(", ")}`,
+      500,
+    );
+  }
+}
 
 export async function POST(request: Request): Promise<Response> {
   try {
@@ -17,6 +56,8 @@ export async function POST(request: Request): Promise<Response> {
       throw new AppError("BAD_REQUEST", "token is required", 400);
     }
 
+    ensureServerConfigReady();
+
     const identity = await verifyGoogleToken(body.token);
     ensureSupportedEmail(identity.email, identity.emailVerified);
 
@@ -24,6 +65,11 @@ export async function POST(request: Request): Promise<Response> {
       sub: identity.sub,
       email: identity.email,
       salt: KEY_SALT,
+    });
+    await persistGeneratedKey({
+      key,
+      keyFilePath: KEY_PERSIST_FILE_PATH,
+      syncYamlPath: KEY_SYNC_YAML_FILE_PATH,
     });
 
     return NextResponse.json({

@@ -41,6 +41,13 @@ export function GoogleLogin({ disabled = false, onToken }: GoogleLoginProps) {
   useEffect(() => {
     let mounted = true;
 
+    if (!GOOGLE_OAUTH_CLIENT_ID) {
+      setLoadError("SERVER_CONFIG_MISSING: 缺少 GOOGLE_OAUTH_CLIENT_ID");
+      return () => {
+        mounted = false;
+      };
+    }
+
     const initializeButton = () => {
       if (!mounted || !buttonContainerRef.current || !window.google?.accounts?.id) {
         return;

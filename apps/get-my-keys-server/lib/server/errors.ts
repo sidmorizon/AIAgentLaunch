@@ -4,6 +4,7 @@ export type AppErrorCode =
   | "UNSUPPORTED_EMAIL_DOMAIN"
   | "EMAIL_NOT_VERIFIED"
   | "INVALID_TOKEN_CLAIMS"
+  | "SERVER_CONFIG_MISSING"
   | "INTERNAL_ERROR";
 
 export class AppError extends Error {

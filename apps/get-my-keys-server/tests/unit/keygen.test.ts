@@ -1,4 +1,8 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+
+vi.hoisted(() => {
+  process.env.KEY_PREFIX = "1k-";
+});
 
 import { buildKey } from "../../lib/server/keygen";
 

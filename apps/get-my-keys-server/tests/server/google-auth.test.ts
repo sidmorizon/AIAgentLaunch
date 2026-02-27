@@ -1,5 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+vi.hoisted(() => {
+  process.env.GOOGLE_OAUTH_CLIENT_ID = "test-google-client-id";
+  process.env.NEXT_PUBLIC_GOOGLE_OAUTH_CLIENT_ID = "test-google-client-id";
+  process.env.ALLOWED_EMAIL_SUFFIX = "@onekey.so";
+});
+
 const verifyIdTokenMock = vi.hoisted(() => vi.fn());
 
 vi.mock("google-auth-library", () => ({
