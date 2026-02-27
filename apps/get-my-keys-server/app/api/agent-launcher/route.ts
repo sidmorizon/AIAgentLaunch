@@ -20,9 +20,28 @@ function ensureLauncherConfigReady(): string {
   return AGENT_LAUNCHER_FILE_PATH;
 }
 
+function resolveRemoteLauncherUrl(value: string): URL | null {
+  try {
+    const parsedUrl = new URL(value);
+    if (parsedUrl.protocol === "http:" || parsedUrl.protocol === "https:") {
+      return parsedUrl;
+    }
+  } catch {
+    return null;
+  }
+
+  return null;
+}
+
 export async function GET(): Promise<Response> {
   try {
     const launcherFilePath = ensureLauncherConfigReady();
+    const remoteLauncherUrl = resolveRemoteLauncherUrl(launcherFilePath);
+
+    if (remoteLauncherUrl) {
+      return NextResponse.redirect(remoteLauncherUrl, 307);
+    }
+
     const fileContent = await readFile(launcherFilePath);
     const fileName = path.basename(launcherFilePath) || "agent-launcher.bin";
 
