@@ -101,9 +101,9 @@ export function KeyResult({ keyValue, maskedKey }: KeyResultProps) {
       <div className="key-header">
         <p className="eyebrow">Runtime Credentials</p>
         <h2>Your Key</h2>
-        {/* <a className="copy-button secondary launcher-download-button" href={AGENT_LAUNCHER_DOWNLOAD_API_PATH}>
-          下载 Agent 启动器
-        </a> */}
+        <a className="copy-button secondary launcher-download-button" href={AGENT_LAUNCHER_DOWNLOAD_API_PATH}>
+          下载 Codex 启动器 →
+        </a> 
       </div>
 
       <div className="credential-block">
