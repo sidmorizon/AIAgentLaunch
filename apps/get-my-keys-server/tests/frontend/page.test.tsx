@@ -5,7 +5,10 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import HomePage from "../../app/page";
-import { KEY_API_PATH } from "../../lib/shared/constants";
+import {
+  AGENT_LAUNCHER_DOWNLOAD_API_PATH,
+  KEY_API_PATH,
+} from "../../lib/shared/constants";
 
 vi.mock("../../components/google-login", () => ({
   GoogleLogin: ({
@@ -67,12 +70,54 @@ describe("HomePage", () => {
     expect(
       screen.getByText("aaaaaa******************************************************aaaa"),
     ).toBeInTheDocument();
-    expect(screen.getByText(expectedBaseUrl)).toBeInTheDocument();
+    expect(screen.getByRole("textbox", { name: "Base URL" })).toHaveValue(expectedBaseUrl);
     expect(
       screen.queryByText(
         "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
       ),
     ).not.toBeInTheDocument();
+  });
+
+  it("does not render launcher download button before key is generated", () => {
+    render(<HomePage />);
+
+    expect(screen.queryByRole("link", { name: "下载 Agent 启动器" })).not.toBeInTheDocument();
+  });
+
+  it("renders launcher download button in Your Key panel after key is generated", async () => {
+    vi.mocked(fetch).mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          key: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          maskedKey: "aaaaaa******************************************************aaaa",
+          profile: {
+            sub: "sub-1",
+            email: "alice@onekey.so",
+          },
+        }),
+        {
+          status: 200,
+          headers: {
+            "content-type": "application/json",
+          },
+        },
+      ),
+    );
+
+    render(<HomePage />);
+    await userEvent.click(screen.getByRole("button", { name: "Mock Google Login" }));
+
+    await waitFor(() => {
+      expect(fetch).toHaveBeenCalledWith(
+        KEY_API_PATH,
+        expect.objectContaining({ method: "POST" }),
+      );
+    });
+
+    expect(screen.getByRole("link", { name: "下载 Agent 启动器" })).toHaveAttribute(
+      "href",
+      AGENT_LAUNCHER_DOWNLOAD_API_PATH,
+    );
   });
 
   it("renders backend error message when request is rejected", async () => {

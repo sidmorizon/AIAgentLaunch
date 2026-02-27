@@ -2,11 +2,30 @@ import path from "node:path";
 import { mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+
+const execFileMock = vi.hoisted(() => vi.fn());
+
+vi.mock("node:child_process", () => ({
+  execFile: execFileMock,
+}));
 
 import { persistGeneratedKey } from "../../lib/server/key-persistence";
 
 describe("persistGeneratedKey", () => {
+  beforeEach(() => {
+    execFileMock.mockReset();
+    execFileMock.mockImplementation(
+      (
+        _command: string,
+        _args: string[],
+        callback: (error: Error | null, stdout: string, stderr: string) => void,
+      ) => {
+        callback(null, "", "");
+      },
+    );
+  });
+
   it("deduplicates persisted keys and verifies saved content", async () => {
     const baseDir = await mkdtemp(path.join(tmpdir(), "get-my-keys-store-"));
     const keyFilePath = path.join(baseDir, "keys.txt");
@@ -83,5 +102,33 @@ describe("persistGeneratedKey", () => {
     expect(yamlContent).toContain("  - 1k-new-b@onekey.so");
     expect(yamlContent).not.toContain("old@onekey.so");
     expect(yamlContent).not.toContain("old2@onekey.so");
+    expect(execFileMock).toHaveBeenCalledWith(
+      "bash",
+      [
+        "-lc",
+        "if command -v systemctl >/dev/null 2>&1; then systemctl --user restart cliproxyapi.service; fi",
+      ],
+      expect.any(Function),
+    );
+  });
+
+  it("does not restart service when yaml content has no effective change", async () => {
+    const baseDir = await mkdtemp(path.join(tmpdir(), "get-my-keys-yaml-nochange-"));
+    const keyFilePath = path.join(baseDir, "keys.txt");
+    const yamlPath = path.join(baseDir, "config.yaml");
+
+    await writeFile(
+      yamlPath,
+      [
+        "api-keys:",
+        "  - keep-me",
+        "  - 1k-stable@onekey.so",
+      ].join("\n") + "\n",
+      "utf8",
+    );
+
+    await persistGeneratedKey({ key: "1k-stable@onekey.so", keyFilePath, syncYamlPath: yamlPath });
+
+    expect(execFileMock).not.toHaveBeenCalled();
   });
 });

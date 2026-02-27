@@ -1,11 +1,16 @@
 import path from "node:path";
+import { execFile } from "node:child_process";
 import { mkdir, open, readFile, rename, rm, writeFile } from "node:fs/promises";
 import type { FileHandle } from "node:fs/promises";
+import { promisify } from "node:util";
 
 import { KEY_PERSIST_FILE_PATH, KEY_SYNC_YAML_FILE_PATH } from "../shared/constants";
 
 const LOCK_RETRY_INTERVAL_MS = 20;
 const LOCK_RETRY_LIMIT = 250;
+const execFileAsync = promisify(execFile);
+const RESTART_CLIPROXYAPI_SCRIPT =
+  "if command -v systemctl >/dev/null 2>&1; then systemctl --user restart cliproxyapi.service; fi";
 
 type PersistGeneratedKeyInput = {
   key: string;
@@ -53,6 +58,9 @@ async function syncApiKeysYamlIfExists(input: {
   const cleanedYamlKeys = dedupedYamlKeys.filter((value) => !value.includes("@onekey.so"));
   const expectedYamlKeys = dedupeValues([...cleanedYamlKeys, ...input.persistedKeys]);
   const nextYaml = replaceYamlApiKeys(yamlSource, expectedYamlKeys);
+  if (nextYaml === yamlSource) {
+    return;
+  }
 
   await writeTextAtomically(input.yamlFilePath, nextYaml);
 
@@ -61,6 +69,12 @@ async function syncApiKeysYamlIfExists(input: {
   if (!isSameStringArray(savedKeys, expectedYamlKeys)) {
     throw new Error("SYNC_YAML_MISMATCH");
   }
+
+  await restartCliproxyApiServiceIfAvailable();
+}
+
+async function restartCliproxyApiServiceIfAvailable(): Promise<void> {
+  await execFileAsync("bash", ["-lc", RESTART_CLIPROXYAPI_SCRIPT]);
 }
 
 function replaceYamlApiKeys(yamlSource: string, apiKeys: string[]): string {
