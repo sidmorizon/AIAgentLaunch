@@ -245,6 +245,8 @@ public final class MenuBarViewModel: ObservableObject {
     @Published public private(set) var statusMessage: String?
     @Published public private(set) var isStatusError = false
     @Published public private(set) var lastLaunchLogText: String?
+    @Published public private(set) var lastClaudeCLICommandText: String?
+    @Published public private(set) var lastClaudeCLIEnvironmentVariables: [String: String]?
 
     private let modelDiscovery: any ModelDiscovering
     private let launchConfigurationValidator: any LaunchConfigurationValidating
@@ -373,6 +375,8 @@ public final class MenuBarViewModel: ObservableObject {
         }
 
         var launchLogForInspection: String?
+        var claudeCLICommandForInspection: String?
+        var claudeCLIEnvironmentForInspection: [String: String]?
         do {
             switch mode {
             case .original:
@@ -397,10 +401,17 @@ public final class MenuBarViewModel: ObservableObject {
                     setStatusMessage("Launch precheck failed: \(resolvedErrorMessage(from: error))", isError: true)
                     return
                 }
+                if agent == .claude {
+                    let launchEnvironment = ClaudeLaunchEnvironment.makeProxyEnvironment(from: configuration)
+                    claudeCLIEnvironmentForInspection = launchEnvironment
+                    claudeCLICommandForInspection = ClaudeLaunchEnvironment.renderCLICommand(from: launchEnvironment)
+                }
                 launchLogForInspection = try await launchRouter
                     .launchProxyMode(agent: agent, configuration: configuration)
             }
             lastLaunchLogText = launchLogForInspection
+            lastClaudeCLICommandText = claudeCLICommandForInspection
+            lastClaudeCLIEnvironmentVariables = claudeCLIEnvironmentForInspection
             state = .idle
             setStatusMessage("Launch requested.")
             if mode == .proxy {

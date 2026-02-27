@@ -518,6 +518,48 @@ final class MenuBarViewModelTests: XCTestCase {
         XCTAssertEqual(router.lastProxyConfiguration?.modelIdentifier, "claude-sonnet-4-5")
     }
 
+    func testSuccessfulClaudeProxyLaunchBuildsCopyableClaudeCLICommand() async {
+        let router = SpyLaunchRouter()
+        let validator = SpyLaunchConfigurationValidator()
+        let viewModel = MenuBarViewModel(
+            modelDiscovery: StubModelDiscovery(result: .success(["claude-sonnet-4-5"])),
+            launchConfigurationValidator: validator,
+            launchRouter: router,
+            settingsStore: InMemorySettingsStore(
+                persistedSettings: MenuBarPersistedSettings(
+                    mode: .proxy,
+                    baseURLText: "",
+                    selectedModel: "",
+                    reasoningLevel: .medium
+                )
+            ),
+            apiKeyStore: InMemoryAPIKeyStore()
+        )
+        viewModel.mode = .proxy
+        viewModel.baseURLText = "https://example.com/v1"
+        viewModel.apiKeyMasked = "sk-test"
+        viewModel.selectedModel = "claude-sonnet-4-5"
+        viewModel.reasoningLevel = .high
+        viewModel.models = ["claude-sonnet-4-5"]
+
+        await viewModel.launchSelectedAgent(.claude)
+
+        XCTAssertEqual(router.launchProxyByAgent[.claude], 1)
+        XCTAssertEqual(validator.validateCallCount, 1)
+        XCTAssertEqual(
+            viewModel.lastClaudeCLICommandText,
+            "ANTHROPIC_API_KEY='sk-test' ANTHROPIC_BASE_URL='https://example.com/v1' ANTHROPIC_DEFAULT_HAIKU_MODEL='claude-sonnet-4-5' ANTHROPIC_DEFAULT_OPUS_MODEL='claude-sonnet-4-5' ANTHROPIC_DEFAULT_SONNET_MODEL='claude-sonnet-4-5' ANTHROPIC_MODEL='claude-sonnet-4-5' ANTHROPIC_REASONING_EFFORT='high' CLAUDE_CODE_SUBAGENT_MODEL='claude-sonnet-4-5' OPENAI_API_KEY='sk-test' OPENAI_BASE_URL='https://example.com/v1' OPENAI_MODEL='claude-sonnet-4-5' OPENAI_REASONING_EFFORT='high' claude"
+        )
+        XCTAssertEqual(
+            viewModel.lastClaudeCLIEnvironmentVariables?["ANTHROPIC_DEFAULT_OPUS_MODEL"],
+            "claude-sonnet-4-5"
+        )
+        XCTAssertEqual(
+            viewModel.lastClaudeCLIEnvironmentVariables?["CLAUDE_CODE_SUBAGENT_MODEL"],
+            "claude-sonnet-4-5"
+        )
+    }
+
     func testCanLaunchClaudeIsFalseWhenClaudeNotInstalled() {
         let viewModel = MenuBarViewModel(
             modelDiscovery: StubModelDiscovery(result: .success(["gpt-5"])),

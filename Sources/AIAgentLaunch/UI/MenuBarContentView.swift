@@ -245,7 +245,11 @@ struct MenuBarContentView: View {
                 Spacer(minLength: 0)
                 if viewModel.canInspectLastLaunchLogText {
                     Button {
-                        launchConfigPreviewWindowController.present(launchLogText: viewModel.lastLaunchLogText ?? "")
+                        launchConfigPreviewWindowController.present(
+                            launchLogText: viewModel.lastLaunchLogText ?? "",
+                            claudeCLIEnvironment: viewModel.lastClaudeCLIEnvironmentVariables,
+                            claudeModelOptions: viewModel.models
+                        )
                     } label: {
                         Image(systemName: "doc.text.magnifyingglass")
                     }

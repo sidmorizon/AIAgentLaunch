@@ -130,8 +130,16 @@ final class MenuBarContentViewSourceLayoutTests: XCTestCase {
             "Config preview should open in an independent window instead of a sheet tied to the menu panel."
         )
         XCTAssertTrue(
-            source.contains("launchConfigPreviewWindowController.present(launchLogText:"),
+            source.contains("launchConfigPreviewWindowController.present("),
             "Inspect action should route through a dedicated preview window controller."
+        )
+        XCTAssertTrue(
+            source.contains("claudeCLIEnvironment: viewModel.lastClaudeCLIEnvironmentVariables"),
+            "Inspect action should pass through Claude launch environment for dynamic CLI command generation."
+        )
+        XCTAssertTrue(
+            source.contains("claudeModelOptions: viewModel.models"),
+            "Inspect action should pass through the same model list used by the configuration section."
         )
     }
 
