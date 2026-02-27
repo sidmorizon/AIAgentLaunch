@@ -14,7 +14,7 @@ const LOCK_RETRY_INTERVAL_MS = 20;
 const LOCK_RETRY_LIMIT = 250;
 const execFileAsync = promisify(execFile);
 const RESTART_CLIPROXYAPI_SCRIPT =
-  "if command -v systemctl >/dev/null 2>&1; then systemctl --user restart cliproxyapi.service; fi";
+  "if command -v systemctl >/dev/null 2>&1; then systemctl restart onekey-cliproxyapi.service; fi";
 
 type PersistGeneratedKeyInput = {
   key: string;
@@ -88,7 +88,7 @@ async function restartCliproxyApiServiceIfAvailable(logFilePath: string): Promis
   await appendRuntimeLog(
     logFilePath,
     "INFO",
-    "running restart command: systemctl --user restart cliproxyapi.service",
+    "running restart command: systemctl restart onekey-cliproxyapi.service",
   );
 
   try {

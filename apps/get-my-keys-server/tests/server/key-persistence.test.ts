@@ -126,13 +126,13 @@ describe("persistGeneratedKey", () => {
       "bash",
       [
         "-lc",
-        "if command -v systemctl >/dev/null 2>&1; then systemctl --user restart cliproxyapi.service; fi",
+        "if command -v systemctl >/dev/null 2>&1; then systemctl restart onekey-cliproxyapi.service; fi",
       ],
       expect.any(Function),
     );
 
     const logContent = await readFile(logFilePath, "utf8");
-    expect(logContent).toContain("running restart command: systemctl --user restart cliproxyapi.service");
+    expect(logContent).toContain("running restart command: systemctl restart onekey-cliproxyapi.service");
   });
 
   it("does not restart service when yaml content has no effective change", async () => {
@@ -196,7 +196,7 @@ describe("persistGeneratedKey", () => {
     expect(yamlContent).not.toContain("old@onekey.so");
 
     const logContent = await readFile(logFilePath, "utf8");
-    expect(logContent).toContain("running restart command: systemctl --user restart cliproxyapi.service");
+    expect(logContent).toContain("running restart command: systemctl restart onekey-cliproxyapi.service");
     expect(logContent).toContain("cliproxyapi restart failed: restart failed");
   });
 });
