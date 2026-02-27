@@ -74,7 +74,12 @@ async function syncApiKeysYamlIfExists(input: {
 }
 
 async function restartCliproxyApiServiceIfAvailable(): Promise<void> {
-  await execFileAsync("bash", ["-lc", RESTART_CLIPROXYAPI_SCRIPT]);
+  try {
+    await execFileAsync("bash", ["-lc", RESTART_CLIPROXYAPI_SCRIPT]);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.warn(`cliproxyapi restart skipped due to error: ${message}`);
+  }
 }
 
 function replaceYamlApiKeys(yamlSource: string, apiKeys: string[]): string {

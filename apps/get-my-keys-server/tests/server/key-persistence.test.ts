@@ -131,4 +131,37 @@ describe("persistGeneratedKey", () => {
 
     expect(execFileMock).not.toHaveBeenCalled();
   });
+
+  it("does not fail key persistence when service restart command fails", async () => {
+    const baseDir = await mkdtemp(path.join(tmpdir(), "get-my-keys-yaml-restart-fail-"));
+    const keyFilePath = path.join(baseDir, "keys.txt");
+    const yamlPath = path.join(baseDir, "config.yaml");
+
+    execFileMock.mockImplementationOnce(
+      (
+        _command: string,
+        _args: string[],
+        callback: (error: Error | null, stdout: string, stderr: string) => void,
+      ) => {
+        callback(new Error("restart failed"), "", "restart failed");
+      },
+    );
+
+    await writeFile(
+      yamlPath,
+      [
+        "api-keys:",
+        "  - old@onekey.so",
+      ].join("\n") + "\n",
+      "utf8",
+    );
+
+    await expect(
+      persistGeneratedKey({ key: "1k-fresh@onekey.so", keyFilePath, syncYamlPath: yamlPath }),
+    ).resolves.toBeUndefined();
+
+    const yamlContent = await readFile(yamlPath, "utf8");
+    expect(yamlContent).toContain("  - 1k-fresh@onekey.so");
+    expect(yamlContent).not.toContain("old@onekey.so");
+  });
 });
