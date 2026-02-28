@@ -69,9 +69,18 @@ struct MenuBarContentView: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text("AIAgentLaunch")
                     .font(.headline.weight(.semibold))
-                Text("v\(appVersion)")
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
+                HStack(spacing: 6) {
+                    Text("v\(appVersion)")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+
+                    if let updateHintText = sparkleUpdaterController.updateHintText {
+                        updateHintInlineLabel(
+                            text: updateHintText,
+                            tone: sparkleUpdaterController.updateHintTone
+                        )
+                    }
+                }
             }
 
             Spacer()
@@ -79,13 +88,6 @@ struct MenuBarContentView: View {
             Menu {
                 Button("检测升级") {
                     sparkleUpdaterController.checkForUpdates()
-                }
-
-                if let updateHintText = sparkleUpdaterController.updateHintText {
-                    updateHintMenuSubtitle(
-                        text: updateHintText,
-                        tone: sparkleUpdaterController.updateHintTone
-                    )
                 }
 
                 Divider()
@@ -301,7 +303,7 @@ struct MenuBarContentView: View {
         )
     }
 
-    private func updateHintMenuSubtitle(text: String, tone: UpdateAvailabilityTone) -> some View {
+    private func updateHintInlineLabel(text: String, tone: UpdateAvailabilityTone) -> some View {
         HStack(spacing: 6) {
             Circle()
                 .fill(updateHintColor(for: tone))

@@ -196,7 +196,7 @@ final class MenuBarViewModelTests: XCTestCase {
     func testDoesNotPersistAPIKeyWhenConnectionTestFails() async {
         let apiKeyStore = InMemoryAPIKeyStore(storedAPIKey: "sk-old")
         let viewModel = MenuBarViewModel(
-            modelDiscovery: StubModelDiscovery(result: .failure(ModelDiscoveryServiceError.unauthorized)),
+            modelDiscovery: StubModelDiscovery(result: .failure(ModelDiscoveryServiceError.unauthorized())),
             launchRouter: SpyLaunchRouter(),
             settingsStore: InMemorySettingsStore(
                 persistedSettings: MenuBarPersistedSettings(
@@ -269,6 +269,32 @@ final class MenuBarViewModelTests: XCTestCase {
 
         XCTAssertTrue(viewModel.canLaunch)
         XCTAssertTrue(viewModel.canTestConnection)
+    }
+
+    func testProxyModeAllowsEmptyAPIKey() {
+        let viewModel = MenuBarViewModel(
+            modelDiscovery: StubModelDiscovery(result: .success(["gpt-5"])),
+            launchRouter: SpyLaunchRouter(),
+            settingsStore: InMemorySettingsStore(
+                persistedSettings: MenuBarPersistedSettings(
+                    mode: .proxy,
+                    baseURLText: "",
+                    selectedModel: "",
+                    reasoningLevel: .medium
+                )
+            ),
+            apiKeyStore: InMemoryAPIKeyStore()
+        )
+
+        viewModel.mode = .proxy
+        viewModel.baseURLText = "https://example.com/v1"
+        viewModel.apiKeyMasked = ""
+        viewModel.selectedModel = "gpt-5"
+        viewModel.models = ["gpt-5"]
+
+        XCTAssertNil(viewModel.apiKeyValidationMessage)
+        XCTAssertTrue(viewModel.canTestConnection)
+        XCTAssertTrue(viewModel.canLaunch)
     }
 
     func testProxyModeDisablesLaunchWhenModelSelectionIsUnavailable() {
@@ -370,7 +396,7 @@ final class MenuBarViewModelTests: XCTestCase {
 
     func testTestConnectionFailureTransitionsToFailedState() async {
         let viewModel = MenuBarViewModel(
-            modelDiscovery: StubModelDiscovery(result: .failure(ModelDiscoveryServiceError.unauthorized)),
+            modelDiscovery: StubModelDiscovery(result: .failure(ModelDiscoveryServiceError.unauthorized())),
             launchRouter: SpyLaunchRouter(),
             settingsStore: InMemorySettingsStore(
                 persistedSettings: MenuBarPersistedSettings(
@@ -390,6 +416,30 @@ final class MenuBarViewModelTests: XCTestCase {
 
         XCTAssertEqual(viewModel.state, .testFailed)
         XCTAssertTrue(viewModel.statusMessage?.contains("401") == true)
+    }
+
+    func testTestConnectionFailureUsesRawServerErrorMessage() async {
+        let viewModel = MenuBarViewModel(
+            modelDiscovery: StubModelDiscovery(result: .failure(ModelDiscoveryServiceError.unauthorized(message: "API key missing"))),
+            launchRouter: SpyLaunchRouter(),
+            settingsStore: InMemorySettingsStore(
+                persistedSettings: MenuBarPersistedSettings(
+                    mode: .proxy,
+                    baseURLText: "",
+                    selectedModel: "",
+                    reasoningLevel: .medium
+                )
+            ),
+            apiKeyStore: InMemoryAPIKeyStore()
+        )
+        viewModel.mode = .proxy
+        viewModel.baseURLText = "https://example.com/v1"
+        viewModel.apiKeyMasked = ""
+
+        await viewModel.testConnection()
+
+        XCTAssertEqual(viewModel.state, .testFailed)
+        XCTAssertEqual(viewModel.statusMessage, "Connection failed: API key missing")
     }
 
     func testLaunchInOriginalModeSkipsProxyPath() async {

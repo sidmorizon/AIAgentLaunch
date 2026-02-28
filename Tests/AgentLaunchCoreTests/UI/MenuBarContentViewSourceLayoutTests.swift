@@ -33,12 +33,29 @@ final class MenuBarContentViewSourceLayoutTests: XCTestCase {
         )
     }
 
-    func testCheckForUpdatesStatusUsesDedicatedSubtitleRow() throws {
+    func testCheckForUpdatesMenuDoesNotRenderStandaloneStatusRow() throws {
+        let source = try String(contentsOf: menuBarContentViewSourceURL(), encoding: .utf8)
+
+        XCTAssertFalse(
+            source.contains("updateHintMenuSubtitle"),
+            "Update status should no longer render as a standalone menu subtitle row."
+        )
+    }
+
+    func testHeaderShowsUpdateStatusBesideVersionText() throws {
         let source = try String(contentsOf: menuBarContentViewSourceURL(), encoding: .utf8)
 
         XCTAssertTrue(
-            source.contains("updateHintMenuSubtitle"),
-            "Update status should render on a dedicated subtitle row so it remains visible in menu items."
+            source.contains("Text(\"v\\(appVersion)\")"),
+            "Header should continue to render the app version text."
+        )
+        XCTAssertTrue(
+            source.contains("if let updateHintText = sparkleUpdaterController.updateHintText"),
+            "Header should read update status from the updater controller."
+        )
+        XCTAssertTrue(
+            source.contains("updateHintInlineLabel"),
+            "Header should render update status using the inline label beside the version text."
         )
     }
 

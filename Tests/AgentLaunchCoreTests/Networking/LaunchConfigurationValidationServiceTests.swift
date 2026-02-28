@@ -76,6 +76,124 @@ final class LaunchConfigurationValidationServiceTests: XCTestCase {
             XCTFail("Unexpected error: \(error)")
         }
     }
+
+    func testValidateOmitsAuthorizationHeaderWhenAPIKeyIsEmpty() async throws {
+        let networking = StubLaunchValidationNetworking { request in
+            XCTAssertNil(request.value(forHTTPHeaderField: "Authorization"))
+            let response = HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!
+            return (Data("{\"id\":\"resp_1\"}".utf8), response)
+        }
+        let service = LaunchConfigurationValidationService(networking: networking)
+
+        try await service.validate(
+            configuration: AgentProxyLaunchConfig(
+                apiBaseURL: URL(string: "https://example.com/v1")!,
+                providerAPIKey: "",
+                modelIdentifier: "gpt-5",
+                reasoningLevel: .medium
+            )
+        )
+    }
+
+    func testValidateMapsUnauthorizedRawErrorMessage() async throws {
+        let networking = StubLaunchValidationNetworking { request in
+            let response = HTTPURLResponse(url: request.url!, statusCode: 401, httpVersion: nil, headerFields: nil)!
+            let body = Data("{\"error\":{\"message\":\"API key missing\"}}".utf8)
+            return (body, response)
+        }
+        let service = LaunchConfigurationValidationService(networking: networking)
+
+        do {
+            try await service.validate(
+                configuration: AgentProxyLaunchConfig(
+                    apiBaseURL: URL(string: "https://example.com/v1")!,
+                    providerAPIKey: "",
+                    modelIdentifier: "gpt-5",
+                    reasoningLevel: .medium
+                )
+            )
+            XCTFail("Expected unauthorized validation error")
+        } catch let error as LaunchConfigurationValidationError {
+            XCTAssertEqual(error, .rejected("HTTP 401: {\"error\":{\"message\":\"API key missing\"}}"))
+        } catch {
+            XCTFail("Unexpected error: \(error)")
+        }
+    }
+
+    func testValidateMapsTopLevelMessageForUnauthorizedError() async throws {
+        let networking = StubLaunchValidationNetworking { request in
+            let response = HTTPURLResponse(url: request.url!, statusCode: 401, httpVersion: nil, headerFields: nil)!
+            let body = Data("{\"message\":\"missing api key\"}".utf8)
+            return (body, response)
+        }
+        let service = LaunchConfigurationValidationService(networking: networking)
+
+        do {
+            try await service.validate(
+                configuration: AgentProxyLaunchConfig(
+                    apiBaseURL: URL(string: "https://example.com/v1")!,
+                    providerAPIKey: "",
+                    modelIdentifier: "gpt-5",
+                    reasoningLevel: .medium
+                )
+            )
+            XCTFail("Expected unauthorized validation error")
+        } catch let error as LaunchConfigurationValidationError {
+            XCTAssertEqual(error, .rejected("HTTP 401: {\"message\":\"missing api key\"}"))
+        } catch {
+            XCTFail("Unexpected error: \(error)")
+        }
+    }
+
+    func testValidateMapsPlainTextBodyForUnauthorizedError() async throws {
+        let networking = StubLaunchValidationNetworking { request in
+            let response = HTTPURLResponse(url: request.url!, statusCode: 401, httpVersion: nil, headerFields: nil)!
+            let body = Data("missing api key".utf8)
+            return (body, response)
+        }
+        let service = LaunchConfigurationValidationService(networking: networking)
+
+        do {
+            try await service.validate(
+                configuration: AgentProxyLaunchConfig(
+                    apiBaseURL: URL(string: "https://example.com/v1")!,
+                    providerAPIKey: "",
+                    modelIdentifier: "gpt-5",
+                    reasoningLevel: .medium
+                )
+            )
+            XCTFail("Expected unauthorized validation error")
+        } catch let error as LaunchConfigurationValidationError {
+            XCTAssertEqual(error, .rejected("HTTP 401: missing api key"))
+        } catch {
+            XCTFail("Unexpected error: \(error)")
+        }
+    }
+
+    func testValidateUsesRawJSONBodyForUnauthorizedError() async throws {
+        let networking = StubLaunchValidationNetworking { request in
+            let response = HTTPURLResponse(url: request.url!, statusCode: 401, httpVersion: nil, headerFields: nil)!
+            let body = Data("{\"message\":\"missing api key\"}".utf8)
+            return (body, response)
+        }
+        let service = LaunchConfigurationValidationService(networking: networking)
+
+        do {
+            try await service.validate(
+                configuration: AgentProxyLaunchConfig(
+                    apiBaseURL: URL(string: "https://example.com/v1")!,
+                    providerAPIKey: "",
+                    modelIdentifier: "gpt-5",
+                    reasoningLevel: .medium
+                )
+            )
+            XCTFail("Expected unauthorized validation error")
+        } catch let error as LaunchConfigurationValidationError {
+            XCTAssertEqual(error, .rejected("HTTP 401: {\"message\":\"missing api key\"}"))
+        } catch {
+            XCTFail("Unexpected error: \(error)")
+        }
+    }
 }
 
 private struct StubLaunchValidationNetworking: ModelDiscoveryNetworking {

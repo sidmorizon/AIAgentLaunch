@@ -39,7 +39,9 @@ public final class LaunchConfigurationValidationService: Sendable {
         let endpointURL = resolveResponsesEndpoint(from: configuration.apiBaseURL)
         var request = URLRequest(url: endpointURL)
         request.httpMethod = "POST"
-        request.setValue("Bearer \(configuration.providerAPIKey)", forHTTPHeaderField: "Authorization")
+        if !configuration.providerAPIKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            request.setValue("Bearer \(configuration.providerAPIKey)", forHTTPHeaderField: "Authorization")
+        }
         request.setValue("application/json", forHTTPHeaderField: "Accept")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.httpBody = try JSONEncoder().encode(
@@ -60,13 +62,22 @@ public final class LaunchConfigurationValidationService: Sendable {
         case 200 ... 299:
             return
         case 401:
+            if let message = rawHTTPErrorMessage(statusCode: 401, data: data) {
+                throw LaunchConfigurationValidationError.rejected(message)
+            }
             throw LaunchConfigurationValidationError.unauthorized
         case 403:
+            if let message = rawHTTPErrorMessage(statusCode: 403, data: data) {
+                throw LaunchConfigurationValidationError.rejected(message)
+            }
             throw LaunchConfigurationValidationError.forbidden
         case 404:
+            if let message = rawHTTPErrorMessage(statusCode: 404, data: data) {
+                throw LaunchConfigurationValidationError.rejected(message)
+            }
             throw LaunchConfigurationValidationError.notFound
         default:
-            if let message = extractErrorMessage(from: data) {
+            if let message = rawHTTPErrorMessage(statusCode: httpResponse.statusCode, data: data) {
                 throw LaunchConfigurationValidationError.rejected(message)
             }
             throw LaunchConfigurationValidationError.httpStatus(httpResponse.statusCode)
@@ -96,10 +107,12 @@ public final class LaunchConfigurationValidationService: Sendable {
         return components.url ?? baseURL
     }
 
-    private func extractErrorMessage(from data: Data) -> String? {
+    private func rawHTTPErrorMessage(statusCode: Int, data: Data) -> String? {
         guard !data.isEmpty else { return nil }
-        let envelope = try? JSONDecoder().decode(ResponsesValidationErrorEnvelope.self, from: data)
-        return envelope?.error?.message?.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let text = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines), !text.isEmpty else {
+            return nil
+        }
+        return "HTTP \(statusCode): \(text)"
     }
 }
 
@@ -119,12 +132,4 @@ private struct ResponsesValidationRequest: Encodable {
 
 private struct ReasoningPayload: Encodable {
     let effort: String
-}
-
-private struct ResponsesValidationErrorEnvelope: Decodable {
-    let error: ResponsesValidationErrorDetail?
-}
-
-private struct ResponsesValidationErrorDetail: Decodable {
-    let message: String?
 }
