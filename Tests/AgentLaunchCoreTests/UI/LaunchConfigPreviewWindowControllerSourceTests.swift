@@ -27,11 +27,11 @@ final class LaunchConfigPreviewWindowControllerSourceTests: XCTestCase {
             "Preview window should consume structured launch inspection payloads."
         )
         XCTAssertTrue(
-            source.contains("inspectionSection(title: \"config.toml\""),
+            source.contains("inspectionSection(title: \"config.toml\", text: renderedCodexConfigTOMLText)"),
             "Preview window should show a dedicated config.toml section."
         )
         XCTAssertTrue(
-            source.contains("inspectionSection(title: \"启动环境变量\""),
+            source.contains("inspectionSection(title: \"启动环境变量\", text: renderedLaunchEnvironmentText)"),
             "Preview window should show a dedicated launch environment section."
         )
         XCTAssertTrue(
@@ -39,16 +39,44 @@ final class LaunchConfigPreviewWindowControllerSourceTests: XCTestCase {
             "Preview window should hide config section for Claude launches without config content."
         )
         XCTAssertTrue(
-            source.contains("ScrollView {\n                VStack(alignment: .leading, spacing: 12)"),
+            source.contains("ScrollView {"),
             "Preview window content should support vertical scrolling when sections overflow."
+        )
+        XCTAssertTrue(
+            source.contains("LazyVStack("),
+            "Preview window content should support vertical scrolling when sections overflow."
+        )
+        XCTAssertTrue(
+            source.contains("Divider()"),
+            "Preview window should separate content and footer actions."
         )
         XCTAssertTrue(
             source.contains("ScrollView([.vertical])"),
             "Each inspection section should have its own internal vertical scrolling."
         )
         XCTAssertTrue(
-            source.contains("maxHeight: LaunchConfigPreviewWindowLayout.inspectionSectionMaxHeight"),
-            "Inspection section content should cap height and scroll internally."
+            source.contains("private struct LaunchInspectionTextSection: View"),
+            "Inspection text areas should share a reusable section component."
+        )
+        XCTAssertTrue(
+            source.contains("LaunchInspectionTextSection("),
+            "Inspection sections should be rendered through the shared component."
+        )
+        XCTAssertTrue(
+            source.contains("minHeight: LaunchConfigPreviewWindowLayout.inspectionSectionMinHeight"),
+            "Inspection sections should share a unified minimum height configuration."
+        )
+        XCTAssertTrue(
+            source.contains("LaunchConfigPreviewWindowLayout.inspectionSectionMaxHeight"),
+            "Inspection sections should share a unified maximum height configuration."
+        )
+        XCTAssertTrue(
+            source.contains("return min(max(estimatedContentHeight, minHeight), maxHeight)"),
+            "Inspection section should keep height within a shared min/max range."
+        )
+        XCTAssertTrue(
+            source.contains(".frame(minHeight: 0, maxHeight: .infinity, alignment: .topLeading)"),
+            "Preview window content area should grow to fill available space without adding footer gaps."
         )
         XCTAssertTrue(
             source.contains(".frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)"),
