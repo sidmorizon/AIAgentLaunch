@@ -104,6 +104,7 @@ public struct DefaultMenuBarLaunchRouter: MenuBarLaunchRouting {
     private let launcher: any AgentLaunching
     private let codexCoordinator: AgentLaunchCoordinator
     private let authTransaction: any CodexAuthTransactionHandling
+    private let threadModelProviderMigrator: any ThreadModelProviderMigrating
     private let fileManager: FileManager
 
     public init(
@@ -111,12 +112,14 @@ public struct DefaultMenuBarLaunchRouter: MenuBarLaunchRouting {
         launcher: any AgentLaunching = AgentLauncher(),
         coordinator: AgentLaunchCoordinator? = nil,
         authTransaction: any CodexAuthTransactionHandling = CodexAuthTransaction(),
+        threadModelProviderMigrator: any ThreadModelProviderMigrating = SQLiteThreadModelProviderMigrator(),
         fileManager: FileManager = .default
     ) {
         codexProvider = provider
         self.launcher = launcher
         codexCoordinator = coordinator ?? AgentLaunchCoordinator(provider: provider)
         self.authTransaction = authTransaction
+        self.threadModelProviderMigrator = threadModelProviderMigrator
         self.fileManager = fileManager
     }
 
@@ -125,6 +128,8 @@ public struct DefaultMenuBarLaunchRouter: MenuBarLaunchRouting {
     }
 
     public func launchOriginalMode(agent: AgentTarget) async throws -> LaunchInspectionPayload {
+        try threadModelProviderMigrator.migrateForOriginalLaunch()
+
         switch agent {
         case .codex:
             try commentOutProfileAssignmentIfNeeded(at: codexProvider.configurationFilePath)
@@ -156,6 +161,8 @@ public struct DefaultMenuBarLaunchRouter: MenuBarLaunchRouting {
     }
 
     public func launchProxyMode(agent: AgentTarget, configuration: AgentProxyLaunchConfig) async throws -> LaunchInspectionPayload {
+        try threadModelProviderMigrator.migrateForProxyLaunch()
+
         switch agent {
         case .codex:
             let mergedConfiguration = try await codexCoordinator.launchWithTemporaryConfiguration(configuration)
