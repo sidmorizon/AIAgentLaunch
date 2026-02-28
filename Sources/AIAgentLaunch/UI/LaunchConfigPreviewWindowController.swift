@@ -5,8 +5,11 @@ import SwiftUI
 private enum LaunchConfigPreviewWindowLayout {
     static let initialSize = NSSize(width: 620, height: 520)
     static let minimumSize = NSSize(width: 500, height: 420)
-    static let inspectionSectionMinHeight: CGFloat = 120
-    static let inspectionSectionMaxHeight: CGFloat = 400
+    static let inspectionSectionMinHeight: CGFloat = 0
+    static let inspectionSectionMaxHeight: CGFloat = 150
+    static let inspectionSectionLineHeight: CGFloat = 16
+    static let inspectionSectionVerticalPadding: CGFloat = 22
+    static let contentSpacing: CGFloat = 12
 }
 
 @MainActor
@@ -93,58 +96,67 @@ private struct LaunchConfigPreviewWindow: View {
 
     var body: some View {
         MenuBarSheetContainer(title: "Agent 启动日志", systemImage: "doc.plaintext") {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 12) {
-                    if shouldShowCodexConfigSection {
-                        inspectionSection(title: "config.toml", text: renderedCodexConfigTOMLText)
-                    }
+            VStack(alignment: .leading, spacing: LaunchConfigPreviewWindowLayout.contentSpacing) {
+                ScrollView {
+                    LazyVStack(
+                        alignment: .leading,
+                        spacing: LaunchConfigPreviewWindowLayout.contentSpacing
+                    ) {
+                        if shouldShowCodexConfigSection {
+                            inspectionSection(title: "config.toml", text: renderedCodexConfigTOMLText)
+                        }
 
-                    inspectionSection(title: "启动环境变量", text: renderedLaunchEnvironmentText)
+                        inspectionSection(title: "启动环境变量", text: renderedLaunchEnvironmentText)
 
-                    if let copyClaudeCLICommand = currentClaudeCLICommand {
-                        VStack(alignment: .leading, spacing: 8) {
-                            modelOverridePicker(
-                                title: Self.opusModelKey,
-                                selection: $selectedOpusModel
-                            )
-                            modelOverridePicker(
-                                title: Self.sonnetModelKey,
-                                selection: $selectedSonnetModel
-                            )
-                            modelOverridePicker(
-                                title: Self.haikuModelKey,
-                                selection: $selectedHaikuModel
-                            )
-                            modelOverridePicker(
-                                title: Self.subagentModelKey,
-                                selection: $selectedSubagentModel
-                            )
+                        if let copyClaudeCLICommand = currentClaudeCLICommand {
+                            VStack(alignment: .leading, spacing: 8) {
+                                modelOverridePicker(
+                                    title: Self.opusModelKey,
+                                    selection: $selectedOpusModel
+                                )
+                                modelOverridePicker(
+                                    title: Self.sonnetModelKey,
+                                    selection: $selectedSonnetModel
+                                )
+                                modelOverridePicker(
+                                    title: Self.haikuModelKey,
+                                    selection: $selectedHaikuModel
+                                )
+                                modelOverridePicker(
+                                    title: Self.subagentModelKey,
+                                    selection: $selectedSubagentModel
+                                )
 
-                            HStack {
-                                Button("复制 Claude CLI 命令") {
-                                    copyToPasteboard(copyClaudeCLICommand)
-                                    didCopyClaudeCLICommand = true
+                                HStack {
+                                    Button("复制 Claude CLI 命令") {
+                                        copyToPasteboard(copyClaudeCLICommand)
+                                        didCopyClaudeCLICommand = true
+                                    }
+                                    .buttonStyle(.borderedProminent)
+
+                                    if didCopyClaudeCLICommand {
+                                        Text("已复制")
+                                            .font(.caption)
+                                            .foregroundStyle(.secondary)
+                                    }
+                                    Spacer()
                                 }
-                                .buttonStyle(.borderedProminent)
-
-                                if didCopyClaudeCLICommand {
-                                    Text("已复制")
-                                        .font(.caption)
-                                        .foregroundStyle(.secondary)
-                                }
-                                Spacer()
                             }
                         }
                     }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .frame(maxWidth: .infinity, alignment: .topLeading)
+                .frame(minHeight: 0, maxHeight: .infinity, alignment: .topLeading)
+
+                Divider()
+                HStack {
+                    Spacer()
+                    Button("关闭", action: onClose)
+                        .keyboardShortcut(.cancelAction)
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-
-            HStack {
-                Spacer()
-                Button("关闭", action: onClose)
-                    .keyboardShortcut(.cancelAction)
-            }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .frame(
@@ -198,31 +210,12 @@ private struct LaunchConfigPreviewWindow: View {
     }
 
     private func inspectionSection(title: String, text: String) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text(title)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-
-            ScrollView([.vertical]) {
-                Text(text)
-                    .font(.system(.caption, design: .monospaced))
-                    .textSelection(.enabled)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(10)
-            }
-            .frame(
-                minHeight: LaunchConfigPreviewWindowLayout.inspectionSectionMinHeight,
-                maxHeight: LaunchConfigPreviewWindowLayout.inspectionSectionMaxHeight
-            )
-            .background(
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .fill(Color.primary.opacity(0.04))
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .stroke(Color.primary.opacity(0.08), lineWidth: 1)
-            )
-        }
+        LaunchInspectionTextSection(
+            title: title,
+            text: text,
+            minHeight: LaunchConfigPreviewWindowLayout.inspectionSectionMinHeight,
+            maxHeight: LaunchConfigPreviewWindowLayout.inspectionSectionMaxHeight
+        )
     }
 
     private func modelOverridePicker(title: String, selection: Binding<String>) -> some View {
@@ -278,5 +271,46 @@ private struct LaunchConfigPreviewWindow: View {
     private func copyToPasteboard(_ text: String) {
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(text, forType: .string)
+    }
+}
+
+private struct LaunchInspectionTextSection: View {
+    let title: String
+    let text: String
+    let minHeight: CGFloat
+    let maxHeight: CGFloat
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(title)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+
+            ScrollView([.vertical]) {
+                Text(text)
+                    .font(.system(.caption, design: .monospaced))
+                    .textSelection(.enabled)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(10)
+            }
+            .frame(maxWidth: .infinity, alignment: .topLeading)
+            .frame(height: sectionHeight)
+            .background(
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .fill(Color.primary.opacity(0.04))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .stroke(Color.primary.opacity(0.08), lineWidth: 1)
+            )
+        }
+    }
+
+    private var sectionHeight: CGFloat {
+        let lineCount = max(text.split(separator: "\n", omittingEmptySubsequences: false).count, 1)
+        let estimatedContentHeight =
+            (CGFloat(lineCount) * LaunchConfigPreviewWindowLayout.inspectionSectionLineHeight)
+            + LaunchConfigPreviewWindowLayout.inspectionSectionVerticalPadding
+        return min(max(estimatedContentHeight, minHeight), maxHeight)
     }
 }

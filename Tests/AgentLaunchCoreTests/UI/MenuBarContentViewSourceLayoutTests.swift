@@ -194,6 +194,75 @@ final class MenuBarContentViewSourceLayoutTests: XCTestCase {
         )
     }
 
+    func testProxySectionSupportsBootstrapFlowWithInlineSaveAction() throws {
+        let source = try String(contentsOf: menuBarContentViewSourceURL(), encoding: .utf8)
+
+        XCTAssertTrue(
+            source.contains("Button(\"保存并使用\")"),
+            "Bootstrap state should expose inline save action on the home page."
+        )
+        XCTAssertTrue(
+            source.contains("if viewModel.isBootstrapProfileSetup"),
+            "Proxy section should branch to bootstrap UI when there are no saved profiles."
+        )
+    }
+
+    func testProxySectionSupportsDisplayStateWithProfileSelectorAndManageEntry() throws {
+        let source = try String(contentsOf: menuBarContentViewSourceURL(), encoding: .utf8)
+
+        XCTAssertTrue(
+            source.contains("Text(\"API 配置\")"),
+            "Normal proxy state should include API profile section title."
+        )
+        XCTAssertTrue(
+            source.contains("Button(\"管理...\")"),
+            "Normal proxy state should provide a manage entry to open API profile management."
+        )
+        XCTAssertTrue(
+            source.contains("Button(\"编辑\")"),
+            "Normal proxy state should expose inline edit action for current profile."
+        )
+        XCTAssertTrue(
+            source.contains("maskedAPIKeyText"),
+            "Normal proxy state should render masked API key summary text."
+        )
+    }
+
+    func testProxySectionSupportsEditingStateWithNameField() throws {
+        let source = try String(contentsOf: menuBarContentViewSourceURL(), encoding: .utf8)
+
+        XCTAssertTrue(
+            source.contains("if viewModel.isEditingCurrentProfile"),
+            "Proxy section should branch to dedicated edit UI for current profile."
+        )
+        XCTAssertTrue(
+            source.contains("MenuBarField(\"配置名称\")"),
+            "Edit state should include editable profile name field."
+        )
+        XCTAssertTrue(
+            source.contains("Button(\"保存当前配置\")"),
+            "Edit state should provide save action for current profile."
+        )
+    }
+
+    func testManageButtonOpensProfileManagementWindowController() throws {
+        let source = try String(contentsOf: menuBarContentViewSourceURL(), encoding: .utf8)
+
+        XCTAssertTrue(
+            source.contains("profileManagementWindowController.present(viewModel: viewModel)"),
+            "Manage entry should open the dedicated API profile management window."
+        )
+    }
+
+    func testProfileSwitchAutoTriggersConnectionTest() throws {
+        let source = try String(contentsOf: menuBarContentViewSourceURL(), encoding: .utf8)
+
+        XCTAssertTrue(
+            source.contains("try? await viewModel.selectActiveProfileAndTestConnection(newValue)"),
+            "Selecting a profile from home page should immediately auto-run connection test."
+        )
+    }
+
     func testModeDescriptionTextIsCentered() throws {
         let source = try String(contentsOf: menuBarContentViewSourceURL(), encoding: .utf8)
 
@@ -230,6 +299,15 @@ final class MenuBarContentViewSourceLayoutTests: XCTestCase {
         XCTAssertTrue(
             source.contains("Button(viewModel.isTestingConnection ? \"TESTING...\" : \"测试连接\")"),
             "Connection button loading label should use uppercase English style."
+        )
+    }
+
+    func testConnectionButtonDoesNotUseBlueProminentBackground() throws {
+        let source = try String(contentsOf: menuBarContentViewSourceURL(), encoding: .utf8)
+
+        XCTAssertFalse(
+            source.contains(".tint(Color(red: 0.08, green: 0.48, blue: 0.92))"),
+            "Main panel connection button should not use custom blue tint background."
         )
     }
 
