@@ -141,6 +141,16 @@ public final class ConfigTransaction {
                 continue
             }
 
+            if let sectionName = currentSectionName,
+               let sectionAssignmentKey = parseAssignmentKey(from: line),
+               sectionAssignmentKey == "env_key",
+               shouldRemoveLegacyEnvKey(
+                   in: sectionName,
+                   layout: temporaryLayout
+               ) {
+                continue
+            }
+
             mergedLines.append(line)
         }
 
@@ -270,6 +280,11 @@ public final class ConfigTransaction {
 
     private func sectionKeys(in layout: TemporaryConfigLayout, sectionName: String) -> Set<String> {
         Set((layout.sectionAssignments[sectionName] ?? []).map(\.key))
+    }
+
+    private func shouldRemoveLegacyEnvKey(in sectionName: String, layout: TemporaryConfigLayout) -> Bool {
+        guard layout.sectionAssignments[sectionName] != nil else { return false }
+        return sectionName.hasPrefix("model_providers.")
     }
 
     private func normalizedLines(from text: String) -> [String] {

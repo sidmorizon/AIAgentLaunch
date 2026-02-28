@@ -18,9 +18,9 @@ final class AgentConfigRendererTests: XCTestCase {
         XCTAssertTrue(renderedConfiguration.contains("base_url = \"https://example.com/v1\""))
         XCTAssertTrue(renderedConfiguration.contains("name = \"\(AgentProxyConfigDefaults.providerDisplayName)\""))
         XCTAssertTrue(renderedConfiguration.contains("wire_api = \"responses\""))
-        XCTAssertTrue(renderedConfiguration.contains("env_key= \"\(AgentProxyConfigDefaults.apiKeyEnvironmentVariableName)\""))
         XCTAssertTrue(renderedConfiguration.contains("model = \"gpt-5\""))
         XCTAssertTrue(renderedConfiguration.contains("model_reasoning_effort = \"medium\""))
+        XCTAssertFalse(renderedConfiguration.contains("env_key"))
         XCTAssertFalse(renderedConfiguration.contains("api_key ="))
     }
 
