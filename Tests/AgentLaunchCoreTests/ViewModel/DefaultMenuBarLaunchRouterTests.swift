@@ -24,7 +24,8 @@ final class DefaultMenuBarLaunchRouterTests: XCTestCase {
                 launcher: launcher,
                 launchEventSource: StubLaunchEventSource(),
                 launchTimeoutNanoseconds: 1_000_000
-            )
+            ),
+            threadModelProviderMigrator: SpyThreadModelProviderMigrator()
         )
 
         let launchInspectionPayload = try await router.launchOriginalMode(agent: .codex)
@@ -79,7 +80,8 @@ final class DefaultMenuBarLaunchRouterTests: XCTestCase {
         let router = DefaultMenuBarLaunchRouter(
             provider: provider,
             launcher: SpyLauncher(),
-            authTransaction: authTransaction
+            authTransaction: authTransaction,
+            threadModelProviderMigrator: SpyThreadModelProviderMigrator()
         )
 
         _ = try await router.launchOriginalMode(agent: .codex)
@@ -103,7 +105,8 @@ final class DefaultMenuBarLaunchRouterTests: XCTestCase {
         let router = DefaultMenuBarLaunchRouter(
             provider: provider,
             launcher: SpyLauncher(),
-            authTransaction: authTransaction
+            authTransaction: authTransaction,
+            threadModelProviderMigrator: SpyThreadModelProviderMigrator()
         )
 
         _ = try await router.launchOriginalMode(agent: .codex)
@@ -126,7 +129,8 @@ final class DefaultMenuBarLaunchRouterTests: XCTestCase {
                 launcher: launcher,
                 launchEventSource: StubLaunchEventSource(),
                 launchTimeoutNanoseconds: 1_000_000
-            )
+            ),
+            threadModelProviderMigrator: SpyThreadModelProviderMigrator()
         )
         let configuration = AgentProxyLaunchConfig(
             apiBaseURL: URL(string: "https://example.com/v1")!,
@@ -161,6 +165,43 @@ final class DefaultMenuBarLaunchRouterTests: XCTestCase {
         XCTAssertTrue(maskedEnvironment.contains("ANTHROPIC_API_KEY = \"sk-t********5678\""))
     }
 
+    func testLaunchProxyModeMigratesThreadProvidersBeforeLaunching() async throws {
+        let paths = try makeTemporaryProviderPaths()
+        let provider = StubProvider(paths: paths)
+        let launcher = SpyLauncher()
+        let migrator = SpyThreadModelProviderMigrator()
+        let router = DefaultMenuBarLaunchRouter(
+            provider: provider,
+            launcher: launcher,
+            threadModelProviderMigrator: migrator
+        )
+
+        _ = try await router.launchProxyMode(agent: .claude, configuration: makeProxyLaunchConfiguration())
+
+        XCTAssertEqual(migrator.calls, [.proxy])
+        XCTAssertEqual(launcher.launchCount, 1)
+    }
+
+    func testLaunchOriginalModeMigrationFailurePreventsLaunch() async throws {
+        let paths = try makeTemporaryProviderPaths()
+        let provider = StubProvider(paths: paths)
+        let launcher = SpyLauncher()
+        let migrator = SpyThreadModelProviderMigrator()
+        migrator.originalModeError = StubMigrationError.failed
+        let router = DefaultMenuBarLaunchRouter(
+            provider: provider,
+            launcher: launcher,
+            threadModelProviderMigrator: migrator
+        )
+
+        do {
+            _ = try await router.launchOriginalMode(agent: .claude)
+            XCTFail("Expected launchOriginalMode to throw when migration fails.")
+        } catch {}
+        XCTAssertEqual(migrator.calls, [.original])
+        XCTAssertEqual(launcher.launchCount, 0)
+    }
+
     private func makeTemporaryProviderPaths() throws -> StubProvider.Paths {
         let root = FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString, isDirectory: true)
@@ -170,6 +211,15 @@ final class DefaultMenuBarLaunchRouterTests: XCTestCase {
             configurationFilePath: providerConfigDirectory.appendingPathComponent("config.toml", isDirectory: false),
             authFilePath: providerConfigDirectory.appendingPathComponent("auth.json", isDirectory: false),
             authBackupFilePath: providerConfigDirectory.appendingPathComponent("auth.json.ai-agent-launch.backup", isDirectory: false)
+        )
+    }
+
+    private func makeProxyLaunchConfiguration() -> AgentProxyLaunchConfig {
+        AgentProxyLaunchConfig(
+            apiBaseURL: URL(string: "https://example.com/v1")!,
+            providerAPIKey: "sk-test-12345678",
+            modelIdentifier: "claude-sonnet-4-5",
+            reasoningLevel: .high
         )
     }
 }
@@ -225,4 +275,33 @@ private final class SpyTransaction: ConfigurationTransactionHandling {
 
 private final class StubLaunchEventSource: ProviderLaunchEventSource {
     func waitForLaunch(of bundleIdentifier: String, timeoutNanoseconds: UInt64) async {}
+}
+
+private enum StubMigrationError: Error {
+    case failed
+}
+
+private final class SpyThreadModelProviderMigrator: ThreadModelProviderMigrating {
+    enum Call: Equatable {
+        case proxy
+        case original
+    }
+
+    private(set) var calls: [Call] = []
+    var proxyModeError: Error?
+    var originalModeError: Error?
+
+    func migrateForProxyLaunch() throws {
+        calls.append(.proxy)
+        if let proxyModeError {
+            throw proxyModeError
+        }
+    }
+
+    func migrateForOriginalLaunch() throws {
+        calls.append(.original)
+        if let originalModeError {
+            throw originalModeError
+        }
+    }
 }
