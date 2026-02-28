@@ -5,6 +5,8 @@ import SwiftUI
 private enum LaunchConfigPreviewWindowLayout {
     static let initialSize = NSSize(width: 620, height: 520)
     static let minimumSize = NSSize(width: 500, height: 420)
+    static let inspectionSectionMinHeight: CGFloat = 120
+    static let inspectionSectionMaxHeight: CGFloat = 400
 }
 
 @MainActor
@@ -12,17 +14,13 @@ final class LaunchConfigPreviewWindowController: ObservableObject {
     private var previewWindow: NSWindow?
 
     func present(
-        launchLogText: String,
-        claudeCLIEnvironment: [String: String]? = nil,
+        inspectionPayload: LaunchInspectionPayload,
         claudeModelOptions: [String] = []
     ) {
-        guard !launchLogText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
-
         let window = previewWindow ?? makeWindow()
         window.contentView = NSHostingView(
             rootView: LaunchConfigPreviewWindow(
-                launchLogText: launchLogText,
-                claudeCLIEnvironment: claudeCLIEnvironment,
+                inspectionPayload: inspectionPayload,
                 claudeModelOptions: claudeModelOptions,
                 onClose: { [weak self] in
                     self?.close()
@@ -62,8 +60,7 @@ private struct LaunchConfigPreviewWindow: View {
     private static let haikuModelKey = "ANTHROPIC_DEFAULT_HAIKU_MODEL"
     private static let subagentModelKey = "CLAUDE_CODE_SUBAGENT_MODEL"
 
-    let launchLogText: String
-    let claudeCLIEnvironment: [String: String]?
+    let inspectionPayload: LaunchInspectionPayload
     let claudeModelOptions: [String]
     let onClose: () -> Void
     @State private var didCopyClaudeCLICommand = false
@@ -73,20 +70,18 @@ private struct LaunchConfigPreviewWindow: View {
     @State private var selectedSubagentModel: String
 
     init(
-        launchLogText: String,
-        claudeCLIEnvironment: [String: String]?,
+        inspectionPayload: LaunchInspectionPayload,
         claudeModelOptions: [String],
         onClose: @escaping () -> Void
     ) {
-        self.launchLogText = launchLogText
-        self.claudeCLIEnvironment = claudeCLIEnvironment
+        self.inspectionPayload = inspectionPayload
         self.claudeModelOptions = claudeModelOptions
         self.onClose = onClose
 
-        let defaultEnvironment = claudeCLIEnvironment ?? [:]
+        let defaultEnvironment = inspectionPayload.claudeCLIEnvironmentVariables ?? [:]
         let defaultOptions = Self.resolvedModelOptions(
             from: claudeModelOptions,
-            environment: claudeCLIEnvironment
+            environment: inspectionPayload.claudeCLIEnvironmentVariables
         )
         let fallbackModel = defaultOptions.first ?? ""
 
@@ -99,56 +94,51 @@ private struct LaunchConfigPreviewWindow: View {
     var body: some View {
         MenuBarSheetContainer(title: "Agent 启动日志", systemImage: "doc.plaintext") {
             ScrollView {
-                Text(launchLogText)
-                    .font(.system(.caption, design: .monospaced))
-                    .textSelection(.enabled)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(10)
-            }
-            .background(
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .fill(Color.primary.opacity(0.04))
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .stroke(Color.primary.opacity(0.08), lineWidth: 1)
-            )
+                VStack(alignment: .leading, spacing: 12) {
+                    if shouldShowCodexConfigSection {
+                        inspectionSection(title: "config.toml", text: renderedCodexConfigTOMLText)
+                    }
 
-            if let copyClaudeCLICommand = currentClaudeCLICommand {
-                VStack(alignment: .leading, spacing: 8) {
-                    modelOverridePicker(
-                        title: Self.opusModelKey,
-                        selection: $selectedOpusModel
-                    )
-                    modelOverridePicker(
-                        title: Self.sonnetModelKey,
-                        selection: $selectedSonnetModel
-                    )
-                    modelOverridePicker(
-                        title: Self.haikuModelKey,
-                        selection: $selectedHaikuModel
-                    )
-                    modelOverridePicker(
-                        title: Self.subagentModelKey,
-                        selection: $selectedSubagentModel
-                    )
+                    inspectionSection(title: "启动环境变量", text: renderedLaunchEnvironmentText)
 
-                    HStack {
-                        Button("复制 Claude CLI 命令") {
-                            copyToPasteboard(copyClaudeCLICommand)
-                            didCopyClaudeCLICommand = true
+                    if let copyClaudeCLICommand = currentClaudeCLICommand {
+                        VStack(alignment: .leading, spacing: 8) {
+                            modelOverridePicker(
+                                title: Self.opusModelKey,
+                                selection: $selectedOpusModel
+                            )
+                            modelOverridePicker(
+                                title: Self.sonnetModelKey,
+                                selection: $selectedSonnetModel
+                            )
+                            modelOverridePicker(
+                                title: Self.haikuModelKey,
+                                selection: $selectedHaikuModel
+                            )
+                            modelOverridePicker(
+                                title: Self.subagentModelKey,
+                                selection: $selectedSubagentModel
+                            )
+
+                            HStack {
+                                Button("复制 Claude CLI 命令") {
+                                    copyToPasteboard(copyClaudeCLICommand)
+                                    didCopyClaudeCLICommand = true
+                                }
+                                .buttonStyle(.borderedProminent)
+
+                                if didCopyClaudeCLICommand {
+                                    Text("已复制")
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                }
+                                Spacer()
+                            }
                         }
-                        .buttonStyle(.borderedProminent)
-
-                        if didCopyClaudeCLICommand {
-                            Text("已复制")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
-                        Spacer()
                     }
                 }
             }
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
 
             HStack {
                 Spacer()
@@ -156,6 +146,7 @@ private struct LaunchConfigPreviewWindow: View {
                     .keyboardShortcut(.cancelAction)
             }
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .frame(
             minWidth: LaunchConfigPreviewWindowLayout.minimumSize.width,
             minHeight: LaunchConfigPreviewWindowLayout.minimumSize.height
@@ -175,12 +166,63 @@ private struct LaunchConfigPreviewWindow: View {
     }
 
     private var normalizedClaudeCLIEnvironment: [String: String]? {
-        guard let claudeCLIEnvironment else { return nil }
+        guard let claudeCLIEnvironment = inspectionPayload.claudeCLIEnvironmentVariables else { return nil }
         return claudeCLIEnvironment.isEmpty ? nil : claudeCLIEnvironment
+    }
+
+    private var shouldShowCodexConfigSection: Bool {
+        let hasCodexConfiguration = !(inspectionPayload.codexConfigTOMLText?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .isEmpty ?? true)
+        if inspectionPayload.agent == .claude, !hasCodexConfiguration {
+            return false
+        }
+        return true
+    }
+
+    private var renderedCodexConfigTOMLText: String {
+        let text = inspectionPayload.codexConfigTOMLText?
+            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return text.isEmpty ? "This launch did not modify config.toml." : text
+    }
+
+    private var renderedLaunchEnvironmentText: String {
+        let snapshot = LaunchEnvironmentSnapshotFormatter
+            .renderMaskedSnapshot(from: inspectionPayload.launchEnvironmentVariables)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        return snapshot.isEmpty ? "No injected environment variables." : snapshot
     }
 
     private var availableModelOptions: [String] {
         Self.resolvedModelOptions(from: claudeModelOptions, environment: normalizedClaudeCLIEnvironment)
+    }
+
+    private func inspectionSection(title: String, text: String) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(title)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+
+            ScrollView([.vertical]) {
+                Text(text)
+                    .font(.system(.caption, design: .monospaced))
+                    .textSelection(.enabled)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(10)
+            }
+            .frame(
+                minHeight: LaunchConfigPreviewWindowLayout.inspectionSectionMinHeight,
+                maxHeight: LaunchConfigPreviewWindowLayout.inspectionSectionMaxHeight
+            )
+            .background(
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .fill(Color.primary.opacity(0.04))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .stroke(Color.primary.opacity(0.08), lineWidth: 1)
+            )
+        }
     }
 
     private func modelOverridePicker(title: String, selection: Binding<String>) -> some View {
@@ -193,6 +235,7 @@ private struct LaunchConfigPreviewWindow: View {
                     Text(modelIdentifier).tag(modelIdentifier)
                 }
             }
+            .labelsHidden()
             .pickerStyle(.menu)
         }
     }

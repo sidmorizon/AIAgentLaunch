@@ -598,7 +598,7 @@ final class MenuBarViewModelTests: XCTestCase {
         XCTAssertEqual(validator.validateCallCount, 1)
         XCTAssertEqual(
             viewModel.lastClaudeCLICommandText,
-            "ANTHROPIC_API_KEY='sk-test' ANTHROPIC_BASE_URL='https://example.com/v1' ANTHROPIC_DEFAULT_HAIKU_MODEL='claude-sonnet-4-5' ANTHROPIC_DEFAULT_OPUS_MODEL='claude-sonnet-4-5' ANTHROPIC_DEFAULT_SONNET_MODEL='claude-sonnet-4-5' ANTHROPIC_MODEL='claude-sonnet-4-5' ANTHROPIC_REASONING_EFFORT='high' CLAUDE_CODE_SUBAGENT_MODEL='claude-sonnet-4-5' OPENAI_API_KEY='sk-test' OPENAI_BASE_URL='https://example.com/v1' OPENAI_MODEL='claude-sonnet-4-5' OPENAI_REASONING_EFFORT='high' claude"
+            "ANTHROPIC_API_KEY='sk-test' ANTHROPIC_BASE_URL='https://example.com/v1' ANTHROPIC_DEFAULT_HAIKU_MODEL='claude-sonnet-4-5' ANTHROPIC_DEFAULT_OPUS_MODEL='claude-sonnet-4-5' ANTHROPIC_DEFAULT_SONNET_MODEL='claude-sonnet-4-5' ANTHROPIC_MODEL='claude-sonnet-4-5' ANTHROPIC_REASONING_EFFORT='high' CLAUDE_CODE_SUBAGENT_MODEL='claude-sonnet-4-5' OPENAI_API_KEY='sk-test' OPENAI_BASE_URL='https://example.com/v1' OPENAI_MODEL='claude-sonnet-4-5' OPENAI_REASONING_EFFORT='high' OPEN_BY_AI_AGENT_LAUNCH='true' claude"
         )
         XCTAssertEqual(
             viewModel.lastClaudeCLIEnvironmentVariables?["ANTHROPIC_DEFAULT_OPUS_MODEL"],
@@ -607,6 +607,10 @@ final class MenuBarViewModelTests: XCTestCase {
         XCTAssertEqual(
             viewModel.lastClaudeCLIEnvironmentVariables?["CLAUDE_CODE_SUBAGENT_MODEL"],
             "claude-sonnet-4-5"
+        )
+        XCTAssertEqual(
+            viewModel.lastClaudeCLIEnvironmentVariables?["OPEN_BY_AI_AGENT_LAUNCH"],
+            "true"
         )
     }
 
@@ -661,6 +665,7 @@ final class MenuBarViewModelTests: XCTestCase {
         await viewModel.launchSelectedAgent()
 
         XCTAssertEqual(viewModel.lastLaunchedProxyConfigTOML, mergedConfigurationForInspection)
+        XCTAssertEqual(viewModel.lastLaunchInspectionPayload?.codexConfigTOMLText, mergedConfigurationForInspection)
         XCTAssertTrue(viewModel.canInspectLastLaunchConfigTOML)
     }
 
@@ -692,6 +697,7 @@ final class MenuBarViewModelTests: XCTestCase {
 
         XCTAssertEqual(router.launchOriginalCallCount, 1)
         XCTAssertEqual(viewModel.lastLaunchedProxyConfigTOML, originalConfigurationForInspection)
+        XCTAssertEqual(viewModel.lastLaunchInspectionPayload?.codexConfigTOMLText, originalConfigurationForInspection)
         XCTAssertTrue(viewModel.canInspectLastLaunchConfigTOML)
     }
 
@@ -800,11 +806,11 @@ private final class SpyLaunchRouter: MenuBarLaunchRouting {
         self.installedAgents = installedAgents
     }
 
-    func launchOriginalMode() async throws -> String? {
+    func launchOriginalMode() async throws -> LaunchInspectionPayload {
         try await launchOriginalMode(agent: .codex)
     }
 
-    func launchProxyMode(configuration: AgentProxyLaunchConfig) async throws -> String {
+    func launchProxyMode(configuration: AgentProxyLaunchConfig) async throws -> LaunchInspectionPayload {
         try await launchProxyMode(agent: .codex, configuration: configuration)
     }
 
@@ -812,17 +818,21 @@ private final class SpyLaunchRouter: MenuBarLaunchRouting {
         installedAgents.contains(agent)
     }
 
-    func launchOriginalMode(agent: AgentTarget) async throws -> String? {
+    func launchOriginalMode(agent: AgentTarget) async throws -> LaunchInspectionPayload {
         launchOriginalCallCount += 1
         launchOriginalByAgent[agent, default: 0] += 1
         lastOriginalAgent = agent
         if let originalLaunchError {
             throw originalLaunchError
         }
-        return originalLaunchConfiguration
+        return LaunchInspectionPayload(
+            agent: agent,
+            codexConfigTOMLText: agent == .codex ? originalLaunchConfiguration : nil,
+            launchEnvironmentVariables: [:]
+        )
     }
 
-    func launchProxyMode(agent: AgentTarget, configuration: AgentProxyLaunchConfig) async throws -> String {
+    func launchProxyMode(agent: AgentTarget, configuration: AgentProxyLaunchConfig) async throws -> LaunchInspectionPayload {
         launchProxyCallCount += 1
         launchProxyByAgent[agent, default: 0] += 1
         lastProxyAgent = agent
@@ -830,10 +840,22 @@ private final class SpyLaunchRouter: MenuBarLaunchRouting {
         if let proxyLaunchError {
             throw proxyLaunchError
         }
-        if let proxyLaunchMergedConfiguration {
-            return proxyLaunchMergedConfiguration
+        if agent == .claude {
+            let environmentVariables = ClaudeLaunchEnvironment.makeProxyEnvironment(from: configuration)
+            return LaunchInspectionPayload(
+                agent: .claude,
+                codexConfigTOMLText: nil,
+                launchEnvironmentVariables: environmentVariables,
+                claudeCLIEnvironmentVariables: environmentVariables
+            )
         }
-        return AgentConfigRenderer().renderTemporaryConfiguration(from: configuration)
+        let codexConfiguration = proxyLaunchMergedConfiguration ?? AgentConfigRenderer()
+            .renderTemporaryConfiguration(from: configuration)
+        return LaunchInspectionPayload(
+            agent: .codex,
+            codexConfigTOMLText: codexConfiguration,
+            launchEnvironmentVariables: [:]
+        )
     }
 }
 

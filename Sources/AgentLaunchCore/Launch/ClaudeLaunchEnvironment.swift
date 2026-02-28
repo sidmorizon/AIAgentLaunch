@@ -6,11 +6,6 @@ public enum ClaudeLaunchEnvironment {
     private static let haikuModelKey = "ANTHROPIC_DEFAULT_HAIKU_MODEL"
     private static let subagentModelKey = "CLAUDE_CODE_SUBAGENT_MODEL"
 
-    private static let apiKeyKeys: Set<String> = [
-        "ANTHROPIC_API_KEY",
-        "OPENAI_API_KEY",
-    ]
-
     public static func makeProxyEnvironment(from configuration: AgentProxyLaunchConfig) -> [String: String] {
         let baseURL = configuration.apiBaseURL.absoluteString
         let model = configuration.modelIdentifier
@@ -30,6 +25,7 @@ public enum ClaudeLaunchEnvironment {
             "OPENAI_MODEL": model,
             "ANTHROPIC_REASONING_EFFORT": reasoning,
             "OPENAI_REASONING_EFFORT": reasoning,
+            LaunchEnvironmentDefaults.openByAIAgentLaunchKey: LaunchEnvironmentDefaults.openByAIAgentLaunchValue,
         ]
     }
 
@@ -49,16 +45,7 @@ public enum ClaudeLaunchEnvironment {
     }
 
     public static func renderMaskedSnapshot(from environment: [String: String]) -> String {
-        guard !environment.isEmpty else {
-            return ""
-        }
-
-        let sortedKeys = environment.keys.sorted()
-        let lines = sortedKeys.map { key in
-            let value = environment[key] ?? ""
-            return "\(key) = \"\(maskedValue(for: key, value: value))\""
-        }
-        return lines.joined(separator: "\n")
+        LaunchEnvironmentSnapshotFormatter.renderMaskedSnapshot(from: environment)
     }
 
     public static func renderCLICommand(from environment: [String: String]) -> String {
@@ -71,20 +58,6 @@ public enum ClaudeLaunchEnvironment {
             return "claude"
         }
         return "\(assignments.joined(separator: " ")) claude"
-    }
-
-    private static func maskedValue(for key: String, value: String) -> String {
-        guard apiKeyKeys.contains(key) else { return value }
-        return redactAPIKey(value)
-    }
-
-    private static func redactAPIKey(_ value: String) -> String {
-        guard value.count > 8 else {
-            return String(repeating: "*", count: max(1, value.count))
-        }
-        let prefix = value.prefix(4)
-        let suffix = value.suffix(4)
-        return "\(prefix)********\(suffix)"
     }
 
     private static func shellQuoted(_ value: String) -> String {

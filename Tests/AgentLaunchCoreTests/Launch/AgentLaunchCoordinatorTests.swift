@@ -26,7 +26,10 @@ final class AgentLaunchCoordinatorTests: XCTestCase {
         XCTAssertEqual(authTransaction.applyCount, 1)
         XCTAssertEqual(authTransaction.lastAPIKey, "sk-test")
         XCTAssertEqual(launcher.launchCount, 1)
-        XCTAssertTrue(launcher.lastEnvironmentVariables?.isEmpty == true)
+        XCTAssertEqual(
+            launcher.lastEnvironmentVariables?[LaunchEnvironmentDefaults.openByAIAgentLaunchKey],
+            LaunchEnvironmentDefaults.openByAIAgentLaunchValue
+        )
         XCTAssertEqual(eventSource.waitCount, 1)
         XCTAssertFalse(transaction.lastTemporaryConfiguration?.contains("api_key =") == true)
         XCTAssertFalse(transaction.lastTemporaryConfiguration?.contains("sk-test") == true)

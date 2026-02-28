@@ -151,8 +151,8 @@ final class MenuBarContentViewSourceLayoutTests: XCTestCase {
             "Inspect action should route through a dedicated preview window controller."
         )
         XCTAssertTrue(
-            source.contains("claudeCLIEnvironment: viewModel.lastClaudeCLIEnvironmentVariables"),
-            "Inspect action should pass through Claude launch environment for dynamic CLI command generation."
+            source.contains("inspectionPayload: inspectionPayload"),
+            "Inspect action should pass through the latest structured launch inspection payload."
         )
         XCTAssertTrue(
             source.contains("claudeModelOptions: viewModel.models"),

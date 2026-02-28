@@ -247,9 +247,9 @@ struct MenuBarContentView: View {
                 Spacer(minLength: 0)
                 if viewModel.canInspectLastLaunchLogText {
                     Button {
+                        guard let inspectionPayload = viewModel.lastLaunchInspectionPayload else { return }
                         launchConfigPreviewWindowController.present(
-                            launchLogText: viewModel.lastLaunchLogText ?? "",
-                            claudeCLIEnvironment: viewModel.lastClaudeCLIEnvironmentVariables,
+                            inspectionPayload: inspectionPayload,
                             claudeModelOptions: viewModel.models
                         )
                     } label: {

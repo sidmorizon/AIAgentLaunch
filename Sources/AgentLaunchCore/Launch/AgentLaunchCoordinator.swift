@@ -121,7 +121,7 @@ public final class AgentLaunchCoordinator {
         do {
             try await launcher.launchApplication(
                 bundleIdentifier: provider.applicationBundleIdentifier,
-                environmentVariables: [:]
+                environmentVariables: LaunchEnvironmentDefaults.launchMarker
             )
         } catch {
             throw error

@@ -21,16 +21,16 @@ extension LaunchConfigurationValidationService: LaunchConfigurationValidating {}
 @MainActor
 public protocol MenuBarLaunchRouting {
     func isInstalled(agent: AgentTarget) -> Bool
-    func launchOriginalMode(agent: AgentTarget) async throws -> String?
-    func launchProxyMode(agent: AgentTarget, configuration: AgentProxyLaunchConfig) async throws -> String
+    func launchOriginalMode(agent: AgentTarget) async throws -> LaunchInspectionPayload
+    func launchProxyMode(agent: AgentTarget, configuration: AgentProxyLaunchConfig) async throws -> LaunchInspectionPayload
 }
 
 public extension MenuBarLaunchRouting {
-    func launchOriginalMode() async throws -> String? {
+    func launchOriginalMode() async throws -> LaunchInspectionPayload {
         try await launchOriginalMode(agent: .codex)
     }
 
-    func launchProxyMode(configuration: AgentProxyLaunchConfig) async throws -> String {
+    func launchProxyMode(configuration: AgentProxyLaunchConfig) async throws -> LaunchInspectionPayload {
         try await launchProxyMode(agent: .codex, configuration: configuration)
     }
 }
@@ -149,7 +149,7 @@ public struct DefaultMenuBarLaunchRouter: MenuBarLaunchRouting {
         NSWorkspace.shared.urlForApplication(withBundleIdentifier: agent.applicationBundleIdentifier) != nil
     }
 
-    public func launchOriginalMode(agent: AgentTarget) async throws -> String? {
+    public func launchOriginalMode(agent: AgentTarget) async throws -> LaunchInspectionPayload {
         switch agent {
         case .codex:
             try commentOutProfileAssignmentIfNeeded(at: codexProvider.configurationFilePath)
@@ -160,29 +160,47 @@ public struct DefaultMenuBarLaunchRouter: MenuBarLaunchRouting {
             let launchedConfiguration = try readConfigurationTextIfPresent(at: codexProvider.configurationFilePath)
             try await launcher.launchApplication(
                 bundleIdentifier: codexProvider.applicationBundleIdentifier,
-                environmentVariables: [:]
+                environmentVariables: LaunchEnvironmentDefaults.launchMarker
             )
-            return launchedConfiguration
+            return LaunchInspectionPayload(
+                agent: .codex,
+                codexConfigTOMLText: launchedConfiguration,
+                launchEnvironmentVariables: LaunchEnvironmentDefaults.launchMarker
+            )
         case .claude:
             try await launcher.launchApplication(
                 bundleIdentifier: agent.applicationBundleIdentifier,
-                environmentVariables: [:]
+                environmentVariables: LaunchEnvironmentDefaults.launchMarker
             )
-            return nil
+            return LaunchInspectionPayload(
+                agent: .claude,
+                codexConfigTOMLText: nil,
+                launchEnvironmentVariables: LaunchEnvironmentDefaults.launchMarker
+            )
         }
     }
 
-    public func launchProxyMode(agent: AgentTarget, configuration: AgentProxyLaunchConfig) async throws -> String {
+    public func launchProxyMode(agent: AgentTarget, configuration: AgentProxyLaunchConfig) async throws -> LaunchInspectionPayload {
         switch agent {
         case .codex:
-            return try await codexCoordinator.launchWithTemporaryConfiguration(configuration)
+            let mergedConfiguration = try await codexCoordinator.launchWithTemporaryConfiguration(configuration)
+            return LaunchInspectionPayload(
+                agent: .codex,
+                codexConfigTOMLText: mergedConfiguration,
+                launchEnvironmentVariables: LaunchEnvironmentDefaults.launchMarker
+            )
         case .claude:
             let environmentVariables = ClaudeLaunchEnvironment.makeProxyEnvironment(from: configuration)
             try await launcher.launchApplication(
                 bundleIdentifier: agent.applicationBundleIdentifier,
                 environmentVariables: environmentVariables
             )
-            return ClaudeLaunchEnvironment.renderMaskedSnapshot(from: environmentVariables)
+            return LaunchInspectionPayload(
+                agent: .claude,
+                codexConfigTOMLText: nil,
+                launchEnvironmentVariables: environmentVariables,
+                claudeCLIEnvironmentVariables: environmentVariables
+            )
         }
     }
 
@@ -255,7 +273,7 @@ public final class MenuBarViewModel: ObservableObject {
     @Published public private(set) var state: MenuBarViewState = .idle
     @Published public private(set) var statusMessage: String?
     @Published public private(set) var isStatusError = false
-    @Published public private(set) var lastLaunchLogText: String?
+    @Published public private(set) var lastLaunchInspectionPayload: LaunchInspectionPayload?
     @Published public private(set) var lastClaudeCLICommandText: String?
     @Published public private(set) var lastClaudeCLIEnvironmentVariables: [String: String]?
 
@@ -323,9 +341,7 @@ public final class MenuBarViewModel: ObservableObject {
     }
 
     public var canInspectLastLaunchLogText: Bool {
-        guard statusMessage == "Launch requested." else { return false }
-        guard let lastLaunchLogText else { return false }
-        return !lastLaunchLogText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        statusMessage == "Launch requested." && lastLaunchInspectionPayload != nil
     }
 
     public var canInspectLastLaunchConfigTOML: Bool {
@@ -333,7 +349,7 @@ public final class MenuBarViewModel: ObservableObject {
     }
 
     public var lastLaunchedProxyConfigTOML: String? {
-        lastLaunchLogText
+        lastLaunchInspectionPayload?.codexConfigTOMLText
     }
 
     private func canLaunch(agent: AgentTarget) -> Bool {
@@ -383,13 +399,11 @@ public final class MenuBarViewModel: ObservableObject {
             setLaunchingAgent(nil)
         }
 
-        var launchLogForInspection: String?
-        var claudeCLICommandForInspection: String?
-        var claudeCLIEnvironmentForInspection: [String: String]?
+        var launchInspectionPayload: LaunchInspectionPayload?
         do {
             switch mode {
             case .original:
-                launchLogForInspection = try await launchRouter.launchOriginalMode(agent: agent)
+                launchInspectionPayload = try await launchRouter.launchOriginalMode(agent: agent)
             case .proxy:
                 guard let apiBaseURL = validatedBaseURL(from: baseURLText) else {
                     state = .launchFailed
@@ -410,17 +424,13 @@ public final class MenuBarViewModel: ObservableObject {
                     setStatusMessage("Launch precheck failed: \(resolvedErrorMessage(from: error))", isError: true)
                     return
                 }
-                if agent == .claude {
-                    let launchEnvironment = ClaudeLaunchEnvironment.makeProxyEnvironment(from: configuration)
-                    claudeCLIEnvironmentForInspection = launchEnvironment
-                    claudeCLICommandForInspection = ClaudeLaunchEnvironment.renderCLICommand(from: launchEnvironment)
-                }
-                launchLogForInspection = try await launchRouter
+                launchInspectionPayload = try await launchRouter
                     .launchProxyMode(agent: agent, configuration: configuration)
             }
-            lastLaunchLogText = launchLogForInspection
-            lastClaudeCLICommandText = claudeCLICommandForInspection
-            lastClaudeCLIEnvironmentVariables = claudeCLIEnvironmentForInspection
+            let claudeCLIEnvironment = launchInspectionPayload?.claudeCLIEnvironmentVariables
+            lastLaunchInspectionPayload = launchInspectionPayload
+            lastClaudeCLIEnvironmentVariables = claudeCLIEnvironment
+            lastClaudeCLICommandText = claudeCLIEnvironment.map { ClaudeLaunchEnvironment.renderCLICommand(from: $0) }
             state = .idle
             setStatusMessage("Launch requested.")
             if mode == .proxy {

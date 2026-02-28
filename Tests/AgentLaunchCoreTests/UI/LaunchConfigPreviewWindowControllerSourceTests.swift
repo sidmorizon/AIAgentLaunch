@@ -23,6 +23,38 @@ final class LaunchConfigPreviewWindowControllerSourceTests: XCTestCase {
         let source = try String(contentsOf: sourceURL(), encoding: .utf8)
 
         XCTAssertTrue(
+            source.contains("inspectionPayload: LaunchInspectionPayload"),
+            "Preview window should consume structured launch inspection payloads."
+        )
+        XCTAssertTrue(
+            source.contains("inspectionSection(title: \"config.toml\""),
+            "Preview window should show a dedicated config.toml section."
+        )
+        XCTAssertTrue(
+            source.contains("inspectionSection(title: \"启动环境变量\""),
+            "Preview window should show a dedicated launch environment section."
+        )
+        XCTAssertTrue(
+            source.contains("if shouldShowCodexConfigSection"),
+            "Preview window should hide config section for Claude launches without config content."
+        )
+        XCTAssertTrue(
+            source.contains("ScrollView {\n                VStack(alignment: .leading, spacing: 12)"),
+            "Preview window content should support vertical scrolling when sections overflow."
+        )
+        XCTAssertTrue(
+            source.contains("ScrollView([.vertical])"),
+            "Each inspection section should have its own internal vertical scrolling."
+        )
+        XCTAssertTrue(
+            source.contains("maxHeight: LaunchConfigPreviewWindowLayout.inspectionSectionMaxHeight"),
+            "Inspection section content should cap height and scroll internally."
+        )
+        XCTAssertTrue(
+            source.contains(".frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)"),
+            "Preview window scroll container should expand to fill available window height."
+        )
+        XCTAssertTrue(
             source.contains("Button(\"复制 Claude CLI 命令\")"),
             "Preview window should expose a direct action to copy Claude CLI startup command."
         )
@@ -36,19 +68,19 @@ final class LaunchConfigPreviewWindowControllerSourceTests: XCTestCase {
         let source = try String(contentsOf: sourceURL(), encoding: .utf8)
 
         XCTAssertTrue(
-            source.contains("modelOverridePicker(\n                        title: Self.opusModelKey"),
+            source.contains("title: Self.opusModelKey"),
             "Preview window should include an Opus model dropdown above copy action."
         )
         XCTAssertTrue(
-            source.contains("modelOverridePicker(\n                        title: Self.sonnetModelKey"),
+            source.contains("title: Self.sonnetModelKey"),
             "Preview window should include a Sonnet model dropdown above copy action."
         )
         XCTAssertTrue(
-            source.contains("modelOverridePicker(\n                        title: Self.haikuModelKey"),
+            source.contains("title: Self.haikuModelKey"),
             "Preview window should include a Haiku model dropdown above copy action."
         )
         XCTAssertTrue(
-            source.contains("modelOverridePicker(\n                        title: Self.subagentModelKey"),
+            source.contains("title: Self.subagentModelKey"),
             "Preview window should include a subagent model dropdown above copy action."
         )
     }

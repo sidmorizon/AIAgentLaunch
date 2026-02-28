@@ -25,6 +25,7 @@ final class ClaudeLaunchEnvironmentTests: XCTestCase {
         XCTAssertEqual(environment["OPENAI_MODEL"], "claude-sonnet-4-5")
         XCTAssertEqual(environment["ANTHROPIC_REASONING_EFFORT"], "high")
         XCTAssertEqual(environment["OPENAI_REASONING_EFFORT"], "high")
+        XCTAssertEqual(environment["OPEN_BY_AI_AGENT_LAUNCH"], "true")
     }
 
     func testRenderMaskedSnapshotHidesRawAPIKeys() {

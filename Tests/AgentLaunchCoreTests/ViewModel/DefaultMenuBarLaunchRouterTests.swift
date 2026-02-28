@@ -27,11 +27,14 @@ final class DefaultMenuBarLaunchRouterTests: XCTestCase {
             )
         )
 
-        let launchedConfiguration = try await router.launchOriginalMode(agent: .codex)
+        let launchInspectionPayload = try await router.launchOriginalMode(agent: .codex)
 
         XCTAssertEqual(launcher.launchCount, 1)
         XCTAssertEqual(launcher.lastBundleIdentifier, provider.applicationBundleIdentifier)
-        XCTAssertTrue(launcher.lastEnvironmentVariables?.isEmpty == true)
+        XCTAssertEqual(
+            launcher.lastEnvironmentVariables?[LaunchEnvironmentDefaults.openByAIAgentLaunchKey],
+            LaunchEnvironmentDefaults.openByAIAgentLaunchValue
+        )
         XCTAssertEqual(transaction.applyCount, 0)
         XCTAssertEqual(
             try String(contentsOf: paths.configurationFilePath, encoding: .utf8),
@@ -42,12 +45,16 @@ final class DefaultMenuBarLaunchRouterTests: XCTestCase {
             """
         )
         XCTAssertEqual(
-            launchedConfiguration,
+            launchInspectionPayload.codexConfigTOMLText,
             """
             # profile = "custom-profile"
             [profiles.custom-profile]
             model = "gpt-5"
             """
+        )
+        XCTAssertEqual(
+            launchInspectionPayload.launchEnvironmentVariables[LaunchEnvironmentDefaults.openByAIAgentLaunchKey],
+            LaunchEnvironmentDefaults.openByAIAgentLaunchValue
         )
     }
 
@@ -128,7 +135,7 @@ final class DefaultMenuBarLaunchRouterTests: XCTestCase {
             reasoningLevel: .high
         )
 
-        let launchLog = try await router.launchProxyMode(agent: .claude, configuration: configuration)
+        let launchInspectionPayload = try await router.launchProxyMode(agent: .claude, configuration: configuration)
 
         XCTAssertEqual(launcher.launchCount, 1)
         XCTAssertEqual(launcher.lastBundleIdentifier, AgentTarget.claude.applicationBundleIdentifier)
@@ -144,9 +151,14 @@ final class DefaultMenuBarLaunchRouterTests: XCTestCase {
         XCTAssertEqual(launcher.lastEnvironmentVariables?["OPENAI_MODEL"], "claude-sonnet-4-5")
         XCTAssertEqual(launcher.lastEnvironmentVariables?["ANTHROPIC_REASONING_EFFORT"], "high")
         XCTAssertEqual(launcher.lastEnvironmentVariables?["OPENAI_REASONING_EFFORT"], "high")
+        XCTAssertEqual(launcher.lastEnvironmentVariables?["OPEN_BY_AI_AGENT_LAUNCH"], "true")
         XCTAssertEqual(transaction.applyCount, 0)
-        XCTAssertFalse(launchLog.contains("sk-test-12345678"))
-        XCTAssertTrue(launchLog.contains("ANTHROPIC_API_KEY = \"sk-t********5678\""))
+        XCTAssertEqual(launchInspectionPayload.launchEnvironmentVariables["OPEN_BY_AI_AGENT_LAUNCH"], "true")
+        let maskedEnvironment = LaunchEnvironmentSnapshotFormatter.renderMaskedSnapshot(
+            from: launchInspectionPayload.launchEnvironmentVariables
+        )
+        XCTAssertFalse(maskedEnvironment.contains("sk-test-12345678"))
+        XCTAssertTrue(maskedEnvironment.contains("ANTHROPIC_API_KEY = \"sk-t********5678\""))
     }
 
     private func makeTemporaryProviderPaths() throws -> StubProvider.Paths {
