@@ -4,7 +4,421 @@ import XCTest
 
 @MainActor
 final class MenuBarViewModelTests: XCTestCase {
-    func testHydratesPersistedConfigurationOnInitWithoutLoadingAPIKey() {
+    func testNoProfilesShowsBootstrapProfileSetup() {
+        let profileStore = InMemoryAPIProfileStore(profiles: [], activeProfileID: nil)
+        let viewModel = MenuBarViewModel(
+            modelDiscovery: StubModelDiscovery(result: .success(["gpt-5"])),
+            launchRouter: SpyLaunchRouter(),
+            settingsStore: InMemorySettingsStore(
+                persistedSettings: MenuBarPersistedSettings(
+                    mode: .proxy,
+                    baseURLText: "",
+                    selectedModel: "",
+                    reasoningLevel: .medium
+                )
+            ),
+            profileStore: profileStore
+        )
+
+        XCTAssertTrue(viewModel.isBootstrapProfileSetup)
+        XCTAssertTrue(viewModel.profiles.isEmpty)
+        XCTAssertNil(viewModel.activeProfileID)
+    }
+
+    func testSaveBootstrapProfileAndActivateCreatesDefaultProfile() throws {
+        let profileStore = InMemoryAPIProfileStore(profiles: [], activeProfileID: nil)
+        let viewModel = MenuBarViewModel(
+            modelDiscovery: StubModelDiscovery(result: .success(["gpt-5"])),
+            launchRouter: SpyLaunchRouter(),
+            settingsStore: InMemorySettingsStore(
+                persistedSettings: MenuBarPersistedSettings(
+                    mode: .proxy,
+                    baseURLText: "",
+                    selectedModel: "",
+                    reasoningLevel: .medium
+                )
+            ),
+            profileStore: profileStore
+        )
+        viewModel.profileBaseURLInput = "https://bootstrap.example.com/v1"
+        viewModel.profileAPIKeyInput = "sk-bootstrap"
+
+        try viewModel.saveBootstrapProfileAndActivate()
+
+        XCTAssertEqual(viewModel.profiles.count, 1)
+        XCTAssertEqual(viewModel.profiles.first?.name, "默认配置")
+        XCTAssertEqual(viewModel.activeProfileID, viewModel.profiles.first?.id)
+        XCTAssertEqual(viewModel.baseURLText, "https://bootstrap.example.com/v1")
+        XCTAssertEqual(viewModel.apiKeyMasked, "sk-bootstrap")
+        XCTAssertFalse(viewModel.isBootstrapProfileSetup)
+    }
+
+    func testSelectActiveProfileLoadsBaseURLAndAPIKey() throws {
+        let firstID = UUID(uuidString: "11111111-2222-3333-4444-555555555555")!
+        let secondID = UUID(uuidString: "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee")!
+        let now = Date(timeIntervalSince1970: 1_740_000_000)
+        let profiles = [
+            APIProfile(
+                id: firstID,
+                name: "默认配置",
+                baseURLText: "https://first.example.com/v1",
+                apiKey: "sk-first",
+                createdAt: now,
+                updatedAt: now
+            ),
+            APIProfile(
+                id: secondID,
+                name: "预发布",
+                baseURLText: "https://second.example.com/v1",
+                apiKey: "sk-second",
+                createdAt: now,
+                updatedAt: now
+            )
+        ]
+        let profileStore = InMemoryAPIProfileStore(profiles: profiles, activeProfileID: firstID)
+        let viewModel = MenuBarViewModel(
+            modelDiscovery: StubModelDiscovery(result: .success(["gpt-5"])),
+            launchRouter: SpyLaunchRouter(),
+            settingsStore: InMemorySettingsStore(
+                persistedSettings: MenuBarPersistedSettings(
+                    mode: .proxy,
+                    baseURLText: "",
+                    selectedModel: "",
+                    reasoningLevel: .medium
+                )
+            ),
+            profileStore: profileStore
+        )
+
+        try viewModel.selectActiveProfile(secondID)
+
+        XCTAssertEqual(viewModel.activeProfileID, secondID)
+        XCTAssertEqual(viewModel.baseURLText, "https://second.example.com/v1")
+        XCTAssertEqual(viewModel.apiKeyMasked, "sk-second")
+    }
+
+    func testSelectActiveProfileAndTestConnectionRunsConnectionCheck() async throws {
+        let firstID = UUID(uuidString: "11111111-2222-3333-4444-555555555555")!
+        let secondID = UUID(uuidString: "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee")!
+        let now = Date(timeIntervalSince1970: 1_740_000_000)
+        let profiles = [
+            APIProfile(
+                id: firstID,
+                name: "默认配置",
+                baseURLText: "https://first.example.com/v1",
+                apiKey: "sk-first",
+                createdAt: now,
+                updatedAt: now
+            ),
+            APIProfile(
+                id: secondID,
+                name: "预发布",
+                baseURLText: "https://second.example.com/v1",
+                apiKey: "sk-second",
+                createdAt: now,
+                updatedAt: now
+            )
+        ]
+        let profileStore = InMemoryAPIProfileStore(profiles: profiles, activeProfileID: firstID)
+        let viewModel = MenuBarViewModel(
+            modelDiscovery: StubModelDiscovery(result: .success(["gpt-4.1", "gpt-5"])),
+            launchRouter: SpyLaunchRouter(),
+            settingsStore: InMemorySettingsStore(
+                persistedSettings: MenuBarPersistedSettings(
+                    mode: .proxy,
+                    baseURLText: "",
+                    selectedModel: "",
+                    reasoningLevel: .medium
+                )
+            ),
+            profileStore: profileStore
+        )
+
+        try await viewModel.selectActiveProfileAndTestConnection(secondID)
+
+        XCTAssertEqual(viewModel.activeProfileID, secondID)
+        XCTAssertEqual(viewModel.baseURLText, "https://second.example.com/v1")
+        XCTAssertEqual(viewModel.apiKeyMasked, "sk-second")
+        XCTAssertEqual(viewModel.state, .testSuccess)
+        XCTAssertEqual(viewModel.models, ["gpt-4.1", "gpt-5"])
+        XCTAssertEqual(viewModel.selectedModel, "gpt-4.1")
+    }
+
+    func testProfileCRUDFlowSupportsCreateReadUpdateDelete() throws {
+        let defaultID = UUID(uuidString: "11111111-2222-3333-4444-555555555555")!
+        let now = Date(timeIntervalSince1970: 1_740_000_000)
+        let profileStore = InMemoryAPIProfileStore(
+            profiles: [
+                APIProfile(
+                    id: defaultID,
+                    name: "默认配置",
+                    baseURLText: "https://prod.example.com/v1",
+                    apiKey: "sk-prod",
+                    createdAt: now,
+                    updatedAt: now
+                )
+            ],
+            activeProfileID: defaultID
+        )
+        let viewModel = MenuBarViewModel(
+            modelDiscovery: StubModelDiscovery(result: .success(["gpt-5"])),
+            launchRouter: SpyLaunchRouter(),
+            settingsStore: InMemorySettingsStore(
+                persistedSettings: MenuBarPersistedSettings(
+                    mode: .proxy,
+                    baseURLText: "",
+                    selectedModel: "",
+                    reasoningLevel: .medium
+                )
+            ),
+            profileStore: profileStore
+        )
+
+        try viewModel.addProfile(
+            name: "预发布",
+            baseURLText: "https://staging.example.com/v1",
+            apiKey: "sk-staging",
+            setActive: false
+        )
+
+        XCTAssertEqual(viewModel.profiles.count, 2)
+        XCTAssertEqual(viewModel.activeProfileID, defaultID)
+        guard let createdProfile = viewModel.profiles.first(where: { $0.name == "预发布" }) else {
+            XCTFail("Expected created profile to exist")
+            return
+        }
+        XCTAssertEqual(createdProfile.baseURLText, "https://staging.example.com/v1")
+        XCTAssertEqual(createdProfile.apiKey, "sk-staging")
+
+        try viewModel.selectActiveProfile(createdProfile.id)
+
+        XCTAssertEqual(viewModel.activeProfileID, createdProfile.id)
+        XCTAssertEqual(viewModel.baseURLText, "https://staging.example.com/v1")
+        XCTAssertEqual(viewModel.apiKeyMasked, "sk-staging")
+
+        try viewModel.updateProfile(
+            createdProfile.id,
+            name: "预发布-2",
+            baseURLText: "https://staging2.example.com/v1",
+            apiKey: "sk-staging-2"
+        )
+
+        let updatedProfile = viewModel.profiles.first(where: { $0.id == createdProfile.id })
+        XCTAssertEqual(updatedProfile?.name, "预发布-2")
+        XCTAssertEqual(updatedProfile?.baseURLText, "https://staging2.example.com/v1")
+        XCTAssertEqual(updatedProfile?.apiKey, "sk-staging-2")
+        XCTAssertEqual(viewModel.baseURLText, "https://staging2.example.com/v1")
+        XCTAssertEqual(viewModel.apiKeyMasked, "sk-staging-2")
+
+        try viewModel.deleteProfile(createdProfile.id)
+
+        XCTAssertEqual(viewModel.profiles.count, 1)
+        XCTAssertEqual(viewModel.profiles.first?.name, "默认配置")
+        XCTAssertEqual(viewModel.activeProfileID, defaultID)
+        XCTAssertEqual(viewModel.baseURLText, "https://prod.example.com/v1")
+        XCTAssertEqual(viewModel.apiKeyMasked, "sk-prod")
+    }
+
+    func testSaveCurrentProfileEditsUpdatesNameBaseURLAndAPIKey() throws {
+        let profileID = UUID(uuidString: "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee")!
+        let now = Date(timeIntervalSince1970: 1_740_000_000)
+        let profileStore = InMemoryAPIProfileStore(
+            profiles: [
+                APIProfile(
+                    id: profileID,
+                    name: "默认配置",
+                    baseURLText: "https://old.example.com/v1",
+                    apiKey: "sk-old",
+                    createdAt: now,
+                    updatedAt: now
+                )
+            ],
+            activeProfileID: profileID
+        )
+        let viewModel = MenuBarViewModel(
+            modelDiscovery: StubModelDiscovery(result: .success(["gpt-5"])),
+            launchRouter: SpyLaunchRouter(),
+            settingsStore: InMemorySettingsStore(
+                persistedSettings: MenuBarPersistedSettings(
+                    mode: .proxy,
+                    baseURLText: "",
+                    selectedModel: "",
+                    reasoningLevel: .medium
+                )
+            ),
+            profileStore: profileStore
+        )
+
+        viewModel.enterCurrentProfileEditing()
+        viewModel.profileNameInput = "生产环境"
+        viewModel.profileBaseURLInput = "https://new.example.com/v1"
+        viewModel.profileAPIKeyInput = "sk-new"
+
+        try viewModel.saveCurrentProfileEdits()
+
+        XCTAssertEqual(viewModel.profiles.first?.name, "生产环境")
+        XCTAssertEqual(viewModel.baseURLText, "https://new.example.com/v1")
+        XCTAssertEqual(viewModel.apiKeyMasked, "sk-new")
+        XCTAssertEqual(viewModel.profiles.first?.apiKey, "sk-new")
+        XCTAssertFalse(viewModel.isEditingCurrentProfile)
+    }
+
+    func testUpdateProfileSupportsEditingNonActiveProfileFromManagementPanel() throws {
+        let activeID = UUID(uuidString: "11111111-2222-3333-4444-555555555555")!
+        let targetID = UUID(uuidString: "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee")!
+        let now = Date(timeIntervalSince1970: 1_740_000_000)
+        let profileStore = InMemoryAPIProfileStore(
+            profiles: [
+                APIProfile(
+                    id: activeID,
+                    name: "默认配置",
+                    baseURLText: "https://active.example.com/v1",
+                    apiKey: "sk-active",
+                    createdAt: now,
+                    updatedAt: now
+                ),
+                APIProfile(
+                    id: targetID,
+                    name: "预发布",
+                    baseURLText: "https://staging.example.com/v1",
+                    apiKey: "sk-staging",
+                    createdAt: now,
+                    updatedAt: now
+                )
+            ],
+            activeProfileID: activeID
+        )
+        let viewModel = MenuBarViewModel(
+            modelDiscovery: StubModelDiscovery(result: .success(["gpt-5"])),
+            launchRouter: SpyLaunchRouter(),
+            settingsStore: InMemorySettingsStore(
+                persistedSettings: MenuBarPersistedSettings(
+                    mode: .proxy,
+                    baseURLText: "",
+                    selectedModel: "",
+                    reasoningLevel: .medium
+                )
+            ),
+            profileStore: profileStore
+        )
+
+        try viewModel.updateProfile(
+            targetID,
+            name: "预发布-2",
+            baseURLText: "https://staging2.example.com/v1",
+            apiKey: "sk-staging-2"
+        )
+
+        XCTAssertEqual(viewModel.activeProfileID, activeID)
+        XCTAssertEqual(viewModel.baseURLText, "https://active.example.com/v1")
+        XCTAssertEqual(viewModel.apiKeyMasked, "sk-active")
+        let updated = viewModel.profiles.first { $0.id == targetID }
+        XCTAssertEqual(updated?.name, "预发布-2")
+        XCTAssertEqual(updated?.baseURLText, "https://staging2.example.com/v1")
+        XCTAssertEqual(updated?.apiKey, "sk-staging-2")
+    }
+
+    func testDeleteAllProfilesReturnsToBootstrapStateWithNoData() throws {
+        let profileID = UUID(uuidString: "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee")!
+        let now = Date(timeIntervalSince1970: 1_740_000_000)
+        let profileStore = InMemoryAPIProfileStore(
+            profiles: [
+                APIProfile(
+                    id: profileID,
+                    name: "默认配置",
+                    baseURLText: "https://prod.example.com/v1",
+                    apiKey: "sk-live",
+                    createdAt: now,
+                    updatedAt: now
+                )
+            ],
+            activeProfileID: profileID
+        )
+        let viewModel = MenuBarViewModel(
+            modelDiscovery: StubModelDiscovery(result: .success(["gpt-5"])),
+            launchRouter: SpyLaunchRouter(),
+            settingsStore: InMemorySettingsStore(
+                persistedSettings: MenuBarPersistedSettings(
+                    mode: .proxy,
+                    baseURLText: "",
+                    selectedModel: "gpt-5",
+                    reasoningLevel: .medium
+                )
+            ),
+            profileStore: profileStore
+        )
+        viewModel.models = ["gpt-5"]
+
+        try viewModel.deleteProfile(profileID)
+
+        XCTAssertTrue(viewModel.profiles.isEmpty)
+        XCTAssertNil(viewModel.activeProfileID)
+        XCTAssertTrue(viewModel.isBootstrapProfileSetup)
+        XCTAssertEqual(viewModel.baseURLText, "")
+        XCTAssertEqual(viewModel.apiKeyMasked, "")
+        XCTAssertEqual(viewModel.profileNameInput, "")
+        XCTAssertEqual(viewModel.profileBaseURLInput, "")
+        XCTAssertEqual(viewModel.profileAPIKeyInput, "")
+        XCTAssertTrue(viewModel.models.isEmpty)
+        XCTAssertEqual(viewModel.selectedModel, "")
+    }
+
+    func testMigratesLegacyConfigurationIntoDefaultProfileWhenNoProfilesExist() throws {
+        let profileStore = InMemoryAPIProfileStore(profiles: [], activeProfileID: nil)
+        let viewModel = MenuBarViewModel(
+            modelDiscovery: StubModelDiscovery(result: .success(["gpt-5"])),
+            launchRouter: SpyLaunchRouter(),
+            settingsStore: InMemorySettingsStore(
+                persistedSettings: MenuBarPersistedSettings(
+                    mode: .proxy,
+                    baseURLText: "https://legacy.example.com/v1",
+                    selectedModel: "",
+                    reasoningLevel: .medium
+                )
+            ),
+            profileStore: profileStore
+        )
+
+        XCTAssertEqual(viewModel.profiles.count, 1)
+        XCTAssertEqual(viewModel.profiles.first?.name, "默认配置")
+        XCTAssertEqual(viewModel.activeProfileID, viewModel.profiles.first?.id)
+        XCTAssertEqual(viewModel.baseURLText, "https://legacy.example.com/v1")
+        XCTAssertEqual(viewModel.apiKeyMasked, "")
+        guard let firstProfile = viewModel.profiles.first else {
+            XCTFail("Expected migrated default profile to exist")
+            return
+        }
+        XCTAssertEqual(firstProfile.apiKey, "")
+    }
+
+    func testLegacyMigrationIsIdempotentAcrossRepeatedInitializations() {
+        let sharedProfileStore = InMemoryAPIProfileStore(profiles: [], activeProfileID: nil)
+        let sharedSettingsStore = InMemorySettingsStore(
+            persistedSettings: MenuBarPersistedSettings(
+                mode: .proxy,
+                baseURLText: "https://legacy.example.com/v1",
+                selectedModel: "",
+                reasoningLevel: .medium
+            )
+        )
+
+        _ = MenuBarViewModel(
+            modelDiscovery: StubModelDiscovery(result: .success(["gpt-5"])),
+            launchRouter: SpyLaunchRouter(),
+            settingsStore: sharedSettingsStore,
+            profileStore: sharedProfileStore
+        )
+        let secondViewModel = MenuBarViewModel(
+            modelDiscovery: StubModelDiscovery(result: .success(["gpt-5"])),
+            launchRouter: SpyLaunchRouter(),
+            settingsStore: sharedSettingsStore,
+            profileStore: sharedProfileStore
+        )
+
+        XCTAssertEqual(secondViewModel.profiles.count, 1)
+    }
+
+    func testHydratesPersistedConfigurationOnInit() {
         let settingsStore = InMemorySettingsStore(
             persistedSettings: MenuBarPersistedSettings(
                 mode: .original,
@@ -13,12 +427,10 @@ final class MenuBarViewModelTests: XCTestCase {
                 reasoningLevel: .high
             )
         )
-        let apiKeyStore = InMemoryAPIKeyStore(storedAPIKey: "sk-persisted")
         let viewModel = MenuBarViewModel(
             modelDiscovery: StubModelDiscovery(result: .success(["gpt-5"])),
             launchRouter: SpyLaunchRouter(),
             settingsStore: settingsStore,
-            apiKeyStore: apiKeyStore
         )
 
         XCTAssertEqual(viewModel.mode, .original)
@@ -26,11 +438,24 @@ final class MenuBarViewModelTests: XCTestCase {
         XCTAssertEqual(viewModel.selectedModel, "gpt-5.3-codex")
         XCTAssertEqual(viewModel.reasoningLevel, .high)
         XCTAssertEqual(viewModel.apiKeyMasked, "")
-        XCTAssertEqual(apiKeyStore.loadCallCount, 0)
     }
 
-    func testPreparesProxyContextOnPanelAppearLoadsAPIKeyAndAutoTestsConnection() async {
-        let apiKeyStore = InMemoryAPIKeyStore(storedAPIKey: "sk-persisted")
+    func testPreparesProxyContextOnPanelAppearAutoTestsConnection() async {
+        let profileID = UUID(uuidString: "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee")!
+        let now = Date(timeIntervalSince1970: 1_740_000_000)
+        let profileStore = InMemoryAPIProfileStore(
+            profiles: [
+                APIProfile(
+                    id: profileID,
+                    name: "默认配置",
+                    baseURLText: "https://persisted.example.com/v1",
+                    apiKey: "sk-persisted",
+                    createdAt: now,
+                    updatedAt: now
+                )
+            ],
+            activeProfileID: profileID
+        )
         let viewModel = MenuBarViewModel(
             modelDiscovery: StubModelDiscovery(result: .success(["gpt-4.1", "gpt-5"])),
             launchRouter: SpyLaunchRouter(),
@@ -42,15 +467,13 @@ final class MenuBarViewModelTests: XCTestCase {
                     reasoningLevel: .medium
                 )
             ),
-            apiKeyStore: apiKeyStore
+            profileStore: profileStore
         )
 
-        XCTAssertEqual(viewModel.apiKeyMasked, "")
-        XCTAssertEqual(apiKeyStore.loadCallCount, 0)
+        XCTAssertEqual(viewModel.apiKeyMasked, "sk-persisted")
 
         await viewModel.handlePanelPresented()
 
-        XCTAssertEqual(apiKeyStore.loadCallCount, 1)
         XCTAssertEqual(viewModel.apiKeyMasked, "sk-persisted")
         XCTAssertEqual(viewModel.state, .testSuccess)
         XCTAssertEqual(viewModel.models, ["gpt-4.1", "gpt-5"])
@@ -58,7 +481,6 @@ final class MenuBarViewModelTests: XCTestCase {
     }
 
     func testPanelAppearSkipsProxyPreparationWhenModeIsOriginal() async {
-        let apiKeyStore = InMemoryAPIKeyStore(storedAPIKey: "sk-persisted")
         let viewModel = MenuBarViewModel(
             modelDiscovery: StubModelDiscovery(result: .success(["gpt-4.1", "gpt-5"])),
             launchRouter: SpyLaunchRouter(),
@@ -70,12 +492,10 @@ final class MenuBarViewModelTests: XCTestCase {
                     reasoningLevel: .medium
                 )
             ),
-            apiKeyStore: apiKeyStore
         )
 
         await viewModel.handlePanelPresented()
 
-        XCTAssertEqual(apiKeyStore.loadCallCount, 0)
         XCTAssertEqual(viewModel.state, .idle)
         XCTAssertTrue(viewModel.models.isEmpty)
     }
@@ -93,7 +513,6 @@ final class MenuBarViewModelTests: XCTestCase {
             modelDiscovery: StubModelDiscovery(result: .success(["gpt-5"])),
             launchRouter: SpyLaunchRouter(),
             settingsStore: settingsStore,
-            apiKeyStore: InMemoryAPIKeyStore()
         )
 
         viewModel.mode = .original
@@ -112,8 +531,22 @@ final class MenuBarViewModelTests: XCTestCase {
         )
     }
 
-    func testPersistsAPIKeyToLocalStoreAfterSuccessfulConnectionTest() async {
-        let apiKeyStore = InMemoryAPIKeyStore()
+    func testPersistsAPIKeyToActiveProfileAfterSuccessfulConnectionTest() async {
+        let profileID = UUID(uuidString: "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee")!
+        let now = Date(timeIntervalSince1970: 1_740_000_000)
+        let profileStore = InMemoryAPIProfileStore(
+            profiles: [
+                APIProfile(
+                    id: profileID,
+                    name: "默认配置",
+                    baseURLText: "https://example.com/v1",
+                    apiKey: "sk-old",
+                    createdAt: now,
+                    updatedAt: now
+                )
+            ],
+            activeProfileID: profileID
+        )
         let viewModel = MenuBarViewModel(
             modelDiscovery: StubModelDiscovery(result: .success(["gpt-5"])),
             launchRouter: SpyLaunchRouter(),
@@ -125,76 +558,35 @@ final class MenuBarViewModelTests: XCTestCase {
                     reasoningLevel: .medium
                 )
             ),
-            apiKeyStore: apiKeyStore
+            profileStore: profileStore
         )
 
         viewModel.mode = .proxy
         viewModel.baseURLText = "https://example.com/v1"
         viewModel.apiKeyMasked = "sk-updated"
-        XCTAssertTrue(apiKeyStore.saveCalls.isEmpty)
 
         await viewModel.testConnection()
 
-        XCTAssertEqual(apiKeyStore.saveCalls.last, "sk-updated")
-    }
-
-    func testShowsStorageLoadErrorInStatusMessageAfterPanelAppear() async {
-        let apiKeyStore = InMemoryAPIKeyStore(
-            storedAPIKey: nil,
-            loadError: KeychainAPIError.unexpectedStatus(-25308)
-        )
-        let viewModel = MenuBarViewModel(
-            modelDiscovery: StubModelDiscovery(result: .success(["gpt-5"])),
-            launchRouter: SpyLaunchRouter(),
-            settingsStore: InMemorySettingsStore(
-                persistedSettings: MenuBarPersistedSettings(
-                    mode: .proxy,
-                    baseURLText: "",
-                    selectedModel: "",
-                    reasoningLevel: .medium
-                )
-            ),
-            apiKeyStore: apiKeyStore
-        )
-
-        await viewModel.handlePanelPresented()
-
-        XCTAssertTrue(viewModel.isStatusError)
-        XCTAssertTrue(viewModel.statusMessage?.contains("Storage error") == true)
-        XCTAssertTrue(viewModel.statusMessage?.contains("-25308") == true)
-    }
-
-    func testShowsStorageSaveErrorInStatusMessageWhenPersistingAfterSuccessfulConnectionTest() async {
-        let apiKeyStore = InMemoryAPIKeyStore(
-            storedAPIKey: nil,
-            saveError: KeychainAPIError.unexpectedStatus(-25308)
-        )
-        let viewModel = MenuBarViewModel(
-            modelDiscovery: StubModelDiscovery(result: .success(["gpt-5"])),
-            launchRouter: SpyLaunchRouter(),
-            settingsStore: InMemorySettingsStore(
-                persistedSettings: MenuBarPersistedSettings(
-                    mode: .proxy,
-                    baseURLText: "",
-                    selectedModel: "",
-                    reasoningLevel: .medium
-                )
-            ),
-            apiKeyStore: apiKeyStore
-        )
-
-        viewModel.mode = .proxy
-        viewModel.baseURLText = "https://example.com/v1"
-        viewModel.apiKeyMasked = "sk-updated"
-        await viewModel.testConnection()
-
-        XCTAssertTrue(viewModel.isStatusError)
-        XCTAssertTrue(viewModel.statusMessage?.contains("Storage error") == true)
-        XCTAssertTrue(viewModel.statusMessage?.contains("-25308") == true)
+        XCTAssertEqual(viewModel.profiles.first?.apiKey, "sk-updated")
+        XCTAssertEqual(profileStore.profiles.first?.apiKey, "sk-updated")
     }
 
     func testDoesNotPersistAPIKeyWhenConnectionTestFails() async {
-        let apiKeyStore = InMemoryAPIKeyStore(storedAPIKey: "sk-old")
+        let profileID = UUID(uuidString: "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee")!
+        let now = Date(timeIntervalSince1970: 1_740_000_000)
+        let profileStore = InMemoryAPIProfileStore(
+            profiles: [
+                APIProfile(
+                    id: profileID,
+                    name: "默认配置",
+                    baseURLText: "https://example.com/v1",
+                    apiKey: "sk-old",
+                    createdAt: now,
+                    updatedAt: now
+                )
+            ],
+            activeProfileID: profileID
+        )
         let viewModel = MenuBarViewModel(
             modelDiscovery: StubModelDiscovery(result: .failure(ModelDiscoveryServiceError.unauthorized())),
             launchRouter: SpyLaunchRouter(),
@@ -206,19 +598,16 @@ final class MenuBarViewModelTests: XCTestCase {
                     reasoningLevel: .medium
                 )
             ),
-            apiKeyStore: apiKeyStore
+            profileStore: profileStore
         )
         viewModel.mode = .proxy
         viewModel.baseURLText = "https://example.com/v1"
         viewModel.apiKeyMasked = "sk-new"
 
-        XCTAssertTrue(apiKeyStore.saveCalls.isEmpty)
-
         await viewModel.testConnection()
 
         XCTAssertEqual(viewModel.state, .testFailed)
-        XCTAssertTrue(apiKeyStore.saveCalls.isEmpty)
-        XCTAssertEqual(apiKeyStore.storedAPIKey, "sk-old")
+        XCTAssertEqual(profileStore.profiles.first?.apiKey, "sk-old")
     }
 
     func testDefaultModeIsProxy() {
@@ -233,7 +622,6 @@ final class MenuBarViewModelTests: XCTestCase {
                     reasoningLevel: .medium
                 )
             ),
-            apiKeyStore: InMemoryAPIKeyStore()
         )
 
         XCTAssertEqual(viewModel.mode, .proxy)
@@ -251,7 +639,6 @@ final class MenuBarViewModelTests: XCTestCase {
                     reasoningLevel: .medium
                 )
             ),
-            apiKeyStore: InMemoryAPIKeyStore()
         )
 
         viewModel.mode = .proxy
@@ -283,7 +670,6 @@ final class MenuBarViewModelTests: XCTestCase {
                     reasoningLevel: .medium
                 )
             ),
-            apiKeyStore: InMemoryAPIKeyStore()
         )
 
         viewModel.mode = .proxy
@@ -309,7 +695,6 @@ final class MenuBarViewModelTests: XCTestCase {
                     reasoningLevel: .medium
                 )
             ),
-            apiKeyStore: InMemoryAPIKeyStore()
         )
         viewModel.apiKeyMasked = "sk-test"
 
@@ -329,7 +714,6 @@ final class MenuBarViewModelTests: XCTestCase {
                     reasoningLevel: .medium
                 )
             ),
-            apiKeyStore: InMemoryAPIKeyStore()
         )
 
         viewModel.mode = .proxy
@@ -354,7 +738,6 @@ final class MenuBarViewModelTests: XCTestCase {
                     reasoningLevel: .medium
                 )
             ),
-            apiKeyStore: InMemoryAPIKeyStore()
         )
         viewModel.mode = .proxy
         viewModel.baseURLText = "https://example.com/v1"
@@ -380,7 +763,6 @@ final class MenuBarViewModelTests: XCTestCase {
                     reasoningLevel: .medium
                 )
             ),
-            apiKeyStore: InMemoryAPIKeyStore()
         )
         viewModel.mode = .proxy
         viewModel.baseURLText = "https://example.com"
@@ -392,6 +774,63 @@ final class MenuBarViewModelTests: XCTestCase {
         XCTAssertEqual(viewModel.models, ["gpt-4.1", "gpt-5"])
         XCTAssertEqual(viewModel.selectedModel, "gpt-4.1")
         XCTAssertTrue(viewModel.isModelSelectionEnabled)
+    }
+
+    func testTestConnectionForProfileReturnsSuccessMessageWithoutMutatingMainState() async {
+        let viewModel = MenuBarViewModel(
+            modelDiscovery: StubModelDiscovery(result: .success(["gpt-4.1", "gpt-5"])),
+            launchRouter: SpyLaunchRouter(),
+            settingsStore: InMemorySettingsStore(
+                persistedSettings: MenuBarPersistedSettings(
+                    mode: .proxy,
+                    baseURLText: "https://main.example.com/v1",
+                    selectedModel: "",
+                    reasoningLevel: .medium
+                )
+            ),
+        )
+        viewModel.mode = .proxy
+        viewModel.baseURLText = "https://main.example.com/v1"
+        viewModel.apiKeyMasked = "sk-main"
+
+        let result = await viewModel.testConnectionForProfile(
+            baseURLText: "https://profile.example.com/v1",
+            apiKey: "sk-profile"
+        )
+
+        XCTAssertTrue(result.isSuccess)
+        XCTAssertEqual(result.message, "Connected successfully.")
+        XCTAssertEqual(viewModel.state, .idle)
+        XCTAssertTrue(viewModel.models.isEmpty)
+        XCTAssertEqual(viewModel.selectedModel, "")
+        XCTAssertNil(viewModel.statusMessage)
+        XCTAssertEqual(viewModel.baseURLText, "https://main.example.com/v1")
+        XCTAssertEqual(viewModel.apiKeyMasked, "sk-main")
+    }
+
+    func testTestConnectionForProfileReturnsValidationMessageForInvalidBaseURL() async {
+        let viewModel = MenuBarViewModel(
+            modelDiscovery: StubModelDiscovery(result: .success(["gpt-5"])),
+            launchRouter: SpyLaunchRouter(),
+            settingsStore: InMemorySettingsStore(
+                persistedSettings: MenuBarPersistedSettings(
+                    mode: .proxy,
+                    baseURLText: "",
+                    selectedModel: "",
+                    reasoningLevel: .medium
+                )
+            ),
+        )
+
+        let result = await viewModel.testConnectionForProfile(
+            baseURLText: "example.com/v1",
+            apiKey: "sk-profile"
+        )
+
+        XCTAssertFalse(result.isSuccess)
+        XCTAssertEqual(result.message, "Base URL must use http(s) and include a host.")
+        XCTAssertEqual(viewModel.state, .idle)
+        XCTAssertNil(viewModel.statusMessage)
     }
 
     func testTestConnectionFailureTransitionsToFailedState() async {
@@ -406,7 +845,6 @@ final class MenuBarViewModelTests: XCTestCase {
                     reasoningLevel: .medium
                 )
             ),
-            apiKeyStore: InMemoryAPIKeyStore()
         )
         viewModel.mode = .proxy
         viewModel.baseURLText = "https://example.com/v1"
@@ -430,7 +868,6 @@ final class MenuBarViewModelTests: XCTestCase {
                     reasoningLevel: .medium
                 )
             ),
-            apiKeyStore: InMemoryAPIKeyStore()
         )
         viewModel.mode = .proxy
         viewModel.baseURLText = "https://example.com/v1"
@@ -457,7 +894,6 @@ final class MenuBarViewModelTests: XCTestCase {
                     reasoningLevel: .medium
                 )
             ),
-            apiKeyStore: InMemoryAPIKeyStore()
         )
         viewModel.mode = .original
 
@@ -484,7 +920,6 @@ final class MenuBarViewModelTests: XCTestCase {
                     reasoningLevel: .medium
                 )
             ),
-            apiKeyStore: InMemoryAPIKeyStore()
         )
         viewModel.mode = .original
 
@@ -512,7 +947,6 @@ final class MenuBarViewModelTests: XCTestCase {
                     reasoningLevel: .medium
                 )
             ),
-            apiKeyStore: InMemoryAPIKeyStore()
         )
         viewModel.mode = .proxy
         viewModel.baseURLText = "https://example.com/v1"
@@ -551,7 +985,6 @@ final class MenuBarViewModelTests: XCTestCase {
                     reasoningLevel: .medium
                 )
             ),
-            apiKeyStore: InMemoryAPIKeyStore()
         )
         viewModel.mode = .proxy
         viewModel.baseURLText = "https://example.com/v1"
@@ -583,7 +1016,6 @@ final class MenuBarViewModelTests: XCTestCase {
                     reasoningLevel: .medium
                 )
             ),
-            apiKeyStore: InMemoryAPIKeyStore()
         )
         viewModel.mode = .proxy
         viewModel.baseURLText = "https://example.com/v1"
@@ -626,7 +1058,6 @@ final class MenuBarViewModelTests: XCTestCase {
                     reasoningLevel: .medium
                 )
             ),
-            apiKeyStore: InMemoryAPIKeyStore()
         )
 
         XCTAssertTrue(viewModel.canLaunchCodex)
@@ -653,7 +1084,6 @@ final class MenuBarViewModelTests: XCTestCase {
                     reasoningLevel: .medium
                 )
             ),
-            apiKeyStore: InMemoryAPIKeyStore()
         )
         viewModel.mode = .proxy
         viewModel.baseURLText = "https://example.com/v1"
@@ -690,7 +1120,6 @@ final class MenuBarViewModelTests: XCTestCase {
                     reasoningLevel: .medium
                 )
             ),
-            apiKeyStore: InMemoryAPIKeyStore()
         )
         viewModel.mode = .original
         await viewModel.launchSelectedAgent()
@@ -716,7 +1145,6 @@ final class MenuBarViewModelTests: XCTestCase {
                     reasoningLevel: .medium
                 )
             ),
-            apiKeyStore: InMemoryAPIKeyStore()
         )
         viewModel.mode = .proxy
         viewModel.baseURLText = "https://example.com/v1"
@@ -747,7 +1175,6 @@ final class MenuBarViewModelTests: XCTestCase {
                     reasoningLevel: .medium
                 )
             ),
-            apiKeyStore: InMemoryAPIKeyStore()
         )
         viewModel.mode = .proxy
         viewModel.baseURLText = "https://example.com/v1"
@@ -893,32 +1320,28 @@ private final class InMemorySettingsStore: MenuBarSettingsStoring {
     }
 }
 
-private final class InMemoryAPIKeyStore: MenuBarAPIKeyStoring {
-    private(set) var storedAPIKey: String?
-    private(set) var saveCalls: [String] = []
-    private(set) var loadCallCount = 0
-    private let loadError: Error?
-    private let saveError: Error?
+private final class InMemoryAPIProfileStore: MenuBarAPIProfileStoring {
+    private(set) var profiles: [APIProfile]
+    private(set) var activeProfileID: UUID?
 
-    init(storedAPIKey: String? = nil, loadError: Error? = nil, saveError: Error? = nil) {
-        self.storedAPIKey = storedAPIKey
-        self.loadError = loadError
-        self.saveError = saveError
+    init(profiles: [APIProfile], activeProfileID: UUID?) {
+        self.profiles = profiles
+        self.activeProfileID = activeProfileID
     }
 
-    func loadAPIKey() throws -> String? {
-        loadCallCount += 1
-        if let loadError {
-            throw loadError
-        }
-        return storedAPIKey
+    func loadProfiles() -> [APIProfile] {
+        profiles
     }
 
-    func saveAPIKey(_ apiKey: String) throws {
-        if let saveError {
-            throw saveError
-        }
-        storedAPIKey = apiKey
-        saveCalls.append(apiKey)
+    func saveProfiles(_ profiles: [APIProfile]) {
+        self.profiles = profiles
+    }
+
+    func loadActiveProfileID() -> UUID? {
+        activeProfileID
+    }
+
+    func saveActiveProfileID(_ profileID: UUID?) {
+        activeProfileID = profileID
     }
 }

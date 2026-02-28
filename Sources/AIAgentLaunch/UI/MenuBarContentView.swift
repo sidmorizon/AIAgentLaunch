@@ -7,17 +7,20 @@ struct MenuBarContentView: View {
     @StateObject private var viewModel: MenuBarViewModel
     @StateObject private var sparkleUpdaterController: SparkleUpdaterController
     @ObservedObject private var launchConfigPreviewWindowController: LaunchConfigPreviewWindowController
+    @ObservedObject private var profileManagementWindowController: APIProfileManagementWindowController
     private let appVersion: String
 
     init(
         viewModel: MenuBarViewModel = MenuBarViewModel(),
         sparkleUpdaterController: SparkleUpdaterController = SparkleUpdaterController(),
         launchConfigPreviewWindowController: LaunchConfigPreviewWindowController = LaunchConfigPreviewWindowController(),
+        profileManagementWindowController: APIProfileManagementWindowController = APIProfileManagementWindowController(),
         appVersion: String = AppVersionProvider().currentVersion()
     ) {
         _viewModel = StateObject(wrappedValue: viewModel)
         _sparkleUpdaterController = StateObject(wrappedValue: sparkleUpdaterController)
         _launchConfigPreviewWindowController = ObservedObject(wrappedValue: launchConfigPreviewWindowController)
+        _profileManagementWindowController = ObservedObject(wrappedValue: profileManagementWindowController)
         self.appVersion = appVersion
     }
 
@@ -138,32 +141,31 @@ struct MenuBarContentView: View {
 
     private var proxyConfigurationSection: some View {
         visualGroupSection {
-            MenuBarField("BASE URL") {
-                TextField("https://api.example.com/v1", text: $viewModel.baseURLText)
-                    .textFieldStyle(.roundedBorder)
-                if let validation = viewModel.baseURLValidationMessage {
-                    MenuBarValidationText(text: validation)
-                }
-            }
-
-            MenuBarField("API KEY") {
-                SecureField("sk-...", text: $viewModel.apiKeyMasked)
-                    .textFieldStyle(.roundedBorder)
-                if let validation = viewModel.apiKeyValidationMessage {
-                    MenuBarValidationText(text: validation)
-                }
+            if viewModel.isBootstrapProfileSetup {
+                bootstrapProfileSetupSection
+            } else if viewModel.isEditingCurrentProfile {
+                editingCurrentProfileSection
+            } else {
+                activeProfileDisplaySection
             }
 
             HStack(spacing: 8) {
                 Button(viewModel.isTestingConnection ? "TESTING..." : "测试连接") {
+                    if viewModel.isBootstrapProfileSetup || viewModel.isEditingCurrentProfile {
+                        viewModel.baseURLText = viewModel.profileBaseURLInput
+                        viewModel.apiKeyMasked = viewModel.profileAPIKeyInput
+                    }
                     Task {
                         await viewModel.testConnection()
                     }
                 }
-                .buttonStyle(.borderedProminent)
+                .buttonStyle(.bordered)
                 .controlSize(.regular)
-                .tint(Color(red: 0.08, green: 0.48, blue: 0.92))
-                .disabled(!viewModel.canTestConnection)
+                .disabled(
+                    (viewModel.isBootstrapProfileSetup || viewModel.isEditingCurrentProfile)
+                        ? false
+                        : !viewModel.canTestConnection
+                )
 
                 if viewModel.state == .testSuccess {
                     MenuBarStatusBadge(text: "已连接", tone: .success)
@@ -212,6 +214,115 @@ struct MenuBarContentView: View {
 
             if viewModel.isModelSelectionEnabled, let validation = viewModel.modelValidationMessage {
                 MenuBarValidationText(text: validation)
+            }
+        }
+    }
+
+    private var bootstrapProfileSetupSection: some View {
+        VStack(alignment: .leading, spacing: MenuBarUITokens.fieldSpacing) {
+            MenuBarField("BASE URL") {
+                TextField("https://api.example.com/v1", text: $viewModel.profileBaseURLInput)
+                    .textFieldStyle(.roundedBorder)
+            }
+
+            MenuBarField("API KEY") {
+                SecureField("sk-...", text: $viewModel.profileAPIKeyInput)
+                    .textFieldStyle(.roundedBorder)
+            }
+
+            HStack(spacing: 8) {
+                Button("保存并使用") {
+                    do {
+                        try viewModel.saveBootstrapProfileAndActivate()
+                    } catch {
+                        return
+                    }
+                }
+                .buttonStyle(.borderedProminent)
+
+                Spacer(minLength: 0)
+            }
+        }
+    }
+
+    private var activeProfileDisplaySection: some View {
+        VStack(alignment: .leading, spacing: MenuBarUITokens.fieldSpacing) {
+            Text("API 配置")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+
+            HStack(spacing: 8) {
+                Picker("API 配置", selection: activeProfileSelectionBinding) {
+                    ForEach(viewModel.profiles) { profile in
+                        Text(profile.name).tag(Optional(profile.id))
+                    }
+                }
+                .labelsHidden()
+                .pickerStyle(.menu)
+
+                Button("管理...") {
+                    profileManagementWindowController.present(viewModel: viewModel)
+                }
+                .buttonStyle(.bordered)
+            }
+
+            MenuBarField("BASE URL") {
+                Text(viewModel.baseURLText)
+                    .font(.caption)
+                    .foregroundStyle(.primary)
+                    .lineLimit(1)
+            }
+
+            MenuBarField("API KEY") {
+                HStack(spacing: 8) {
+                    Text(maskedAPIKeyText(viewModel.apiKeyMasked))
+                        .font(.caption)
+                        .foregroundStyle(.primary)
+                        .lineLimit(1)
+
+                    Spacer(minLength: 0)
+
+                    Button("编辑") {
+                        viewModel.enterCurrentProfileEditing()
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                }
+            }
+        }
+    }
+
+    private var editingCurrentProfileSection: some View {
+        VStack(alignment: .leading, spacing: MenuBarUITokens.fieldSpacing) {
+            MenuBarField("配置名称") {
+                TextField("默认配置", text: $viewModel.profileNameInput)
+                    .textFieldStyle(.roundedBorder)
+            }
+            MenuBarField("BASE URL") {
+                TextField("https://api.example.com/v1", text: $viewModel.profileBaseURLInput)
+                    .textFieldStyle(.roundedBorder)
+            }
+            MenuBarField("API KEY") {
+                SecureField("sk-...", text: $viewModel.profileAPIKeyInput)
+                    .textFieldStyle(.roundedBorder)
+            }
+
+            HStack(spacing: 8) {
+                Button("保存当前配置") {
+                    do {
+                        try viewModel.saveCurrentProfileEdits()
+                    } catch {
+                        return
+                    }
+                }
+                .buttonStyle(.borderedProminent)
+
+                Button("取消") {
+                    viewModel.cancelCurrentProfileEditing()
+                }
+                .buttonStyle(.bordered)
+
+                Spacer(minLength: 0)
             }
         }
     }
@@ -278,6 +389,26 @@ struct MenuBarContentView: View {
             RoundedRectangle(cornerRadius: 10, style: .continuous)
                 .stroke(Color(red: 0.74, green: 0.79, blue: 0.87).opacity(0.42), lineWidth: 1)
         )
+    }
+
+    private var activeProfileSelectionBinding: Binding<UUID?> {
+        Binding(
+            get: { viewModel.activeProfileID },
+            set: { newValue in
+                guard let newValue else { return }
+                Task {
+                    try? await viewModel.selectActiveProfileAndTestConnection(newValue)
+                }
+            }
+        )
+    }
+
+    private func maskedAPIKeyText(_ rawValue: String) -> String {
+        let trimmed = rawValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return "(空)" }
+        let prefix = String(trimmed.prefix(3))
+        let suffix = String(trimmed.suffix(3))
+        return "\(prefix)***************\(suffix)"
     }
 
     private func statusBanner(message: String) -> some View {

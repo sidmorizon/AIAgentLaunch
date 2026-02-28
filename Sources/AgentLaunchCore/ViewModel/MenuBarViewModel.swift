@@ -89,31 +89,6 @@ public final class UserDefaultsMenuBarSettingsStore: MenuBarSettingsStoring {
     }
 }
 
-public protocol MenuBarAPIKeyStoring {
-    func loadAPIKey() throws -> String?
-    func saveAPIKey(_ apiKey: String) throws
-}
-
-public final class UserDefaultsMenuBarAPIKeyStore: MenuBarAPIKeyStoring {
-    private enum Keys {
-        static let apiKey = "menu_bar.api_key"
-    }
-
-    private let defaults: UserDefaults
-
-    public init(defaults: UserDefaults = .standard) {
-        self.defaults = defaults
-    }
-
-    public func loadAPIKey() throws -> String? {
-        defaults.string(forKey: Keys.apiKey)
-    }
-
-    public func saveAPIKey(_ apiKey: String) throws {
-        defaults.set(apiKey, forKey: Keys.apiKey)
-    }
-}
-
 public enum MenuBarViewState: Equatable, Sendable {
     case idle
     case testing
@@ -259,6 +234,12 @@ public final class MenuBarViewModel: ObservableObject {
         didSet { persistSettingsIfNeeded() }
     }
     @Published public var apiKeyMasked: String = ""
+    @Published public private(set) var profiles: [APIProfile] = []
+    @Published public private(set) var activeProfileID: UUID?
+    @Published public var isEditingCurrentProfile = false
+    @Published public var profileNameInput: String = ""
+    @Published public var profileBaseURLInput: String = ""
+    @Published public var profileAPIKeyInput: String = ""
     @Published public var models: [String] = []
     @Published public var selectedModel: String = "" {
         didSet { persistSettingsIfNeeded() }
@@ -281,7 +262,7 @@ public final class MenuBarViewModel: ObservableObject {
     private let launchConfigurationValidator: any LaunchConfigurationValidating
     private let launchRouter: any MenuBarLaunchRouting
     private let settingsStore: any MenuBarSettingsStoring
-    private let apiKeyStore: any MenuBarAPIKeyStoring
+    private let profileStore: any MenuBarAPIProfileStoring
     private var isHydratingPersistedState = false
     private var hasPreparedProxyContext = false
 
@@ -290,15 +271,25 @@ public final class MenuBarViewModel: ObservableObject {
         launchConfigurationValidator: (any LaunchConfigurationValidating)? = nil,
         launchRouter: (any MenuBarLaunchRouting)? = nil,
         settingsStore: (any MenuBarSettingsStoring)? = nil,
-        apiKeyStore: (any MenuBarAPIKeyStoring)? = nil
+        profileStore: (any MenuBarAPIProfileStoring)? = nil
     ) {
         self.modelDiscovery = modelDiscovery ?? ModelDiscoveryService()
         self.launchConfigurationValidator = launchConfigurationValidator ?? LaunchConfigurationValidationService()
         self.launchRouter = launchRouter ?? DefaultMenuBarLaunchRouter()
         self.settingsStore = settingsStore ?? UserDefaultsMenuBarSettingsStore()
-        self.apiKeyStore = apiKeyStore ?? UserDefaultsMenuBarAPIKeyStore()
+        if let profileStore {
+            self.profileStore = profileStore
+        } else if settingsStore == nil {
+            self.profileStore = UserDefaultsMenuBarAPIProfileStore()
+        } else {
+            self.profileStore = VolatileMenuBarAPIProfileStore()
+        }
 
         hydratePersistedState()
+    }
+
+    public var isBootstrapProfileSetup: Bool {
+        mode == .proxy && profiles.isEmpty
     }
 
     public var baseURLValidationMessage: String? {
@@ -369,6 +360,154 @@ public final class MenuBarViewModel: ObservableObject {
     public var canTestConnection: Bool {
         guard mode == .proxy, !isTestingConnection else { return false }
         return baseURLValidationMessage == nil
+    }
+
+    public func saveBootstrapProfileAndActivate() throws {
+        try addProfile(
+            name: profileNameInput,
+            baseURLText: profileBaseURLInput,
+            apiKey: profileAPIKeyInput,
+            setActive: true
+        )
+        isEditingCurrentProfile = false
+    }
+
+    public func addProfile(
+        name: String,
+        baseURLText: String,
+        apiKey: String,
+        setActive: Bool = true
+    ) throws {
+        let resolvedName = resolvedUniqueProfileName(from: name)
+        let resolvedBaseURL = baseURLText.trimmingCharacters(in: .whitespacesAndNewlines)
+        let now = Date()
+        let profile = APIProfile(
+            id: UUID(),
+            name: resolvedName,
+            baseURLText: resolvedBaseURL,
+            apiKey: apiKey,
+            createdAt: now,
+            updatedAt: now
+        )
+        profiles.append(profile)
+        profileStore.saveProfiles(profiles)
+        if setActive {
+            profileStore.saveActiveProfileID(profile.id)
+            activeProfileID = profile.id
+            applyActiveProfile(profile, apiKey: apiKey)
+        }
+    }
+
+    public func selectActiveProfile(_ profileID: UUID) throws {
+        guard let profile = profiles.first(where: { $0.id == profileID }) else {
+            throw ProfileSelectionError.profileNotFound
+        }
+        activeProfileID = profileID
+        profileStore.saveActiveProfileID(profileID)
+        applyActiveProfile(profile, apiKey: profile.apiKey)
+        isEditingCurrentProfile = false
+    }
+
+    public func selectActiveProfileAndTestConnection(_ profileID: UUID) async throws {
+        try selectActiveProfile(profileID)
+        await testConnection()
+    }
+
+    public func enterCurrentProfileEditing() {
+        guard let activeProfile = activeProfile else { return }
+        profileNameInput = activeProfile.name
+        profileBaseURLInput = activeProfile.baseURLText
+        profileAPIKeyInput = apiKeyMasked
+        isEditingCurrentProfile = true
+    }
+
+    public func cancelCurrentProfileEditing() {
+        guard let activeProfile = activeProfile else {
+            isEditingCurrentProfile = false
+            return
+        }
+        profileNameInput = activeProfile.name
+        profileBaseURLInput = activeProfile.baseURLText
+        profileAPIKeyInput = apiKeyMasked
+        isEditingCurrentProfile = false
+    }
+
+    public func saveCurrentProfileEdits() throws {
+        guard let profileID = activeProfileID, let index = profiles.firstIndex(where: { $0.id == profileID }) else {
+            throw ProfileSelectionError.profileNotFound
+        }
+        let editedName = profileNameInput.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !editedName.isEmpty else {
+            throw ProfileSelectionError.emptyName
+        }
+        let hasNameConflict = profiles.contains {
+            $0.id != profileID && $0.name.trimmingCharacters(in: .whitespacesAndNewlines) == editedName
+        }
+        guard !hasNameConflict else {
+            throw ProfileSelectionError.duplicateName
+        }
+
+        profiles[index].name = editedName
+        profiles[index].baseURLText = profileBaseURLInput.trimmingCharacters(in: .whitespacesAndNewlines)
+        profiles[index].apiKey = profileAPIKeyInput
+        profiles[index].updatedAt = Date()
+        profileStore.saveProfiles(profiles)
+        applyActiveProfile(profiles[index], apiKey: profileAPIKeyInput)
+        isEditingCurrentProfile = false
+    }
+
+    public func deleteProfile(_ profileID: UUID) throws {
+        guard let index = profiles.firstIndex(where: { $0.id == profileID }) else {
+            throw ProfileSelectionError.profileNotFound
+        }
+        let isDeletingActiveProfile = activeProfileID == profileID
+        profiles.remove(at: index)
+        profileStore.saveProfiles(profiles)
+
+        guard !profiles.isEmpty else {
+            activeProfileID = nil
+            profileStore.saveActiveProfileID(nil)
+            clearRuntimeProfileState()
+            return
+        }
+
+        if isDeletingActiveProfile {
+            let fallbackProfile = profiles[0]
+            activeProfileID = fallbackProfile.id
+            profileStore.saveActiveProfileID(fallbackProfile.id)
+            applyActiveProfile(fallbackProfile, apiKey: fallbackProfile.apiKey)
+        }
+    }
+
+    public func updateProfile(
+        _ profileID: UUID,
+        name: String,
+        baseURLText: String,
+        apiKey: String
+    ) throws {
+        guard let index = profiles.firstIndex(where: { $0.id == profileID }) else {
+            throw ProfileSelectionError.profileNotFound
+        }
+        let editedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !editedName.isEmpty else {
+            throw ProfileSelectionError.emptyName
+        }
+        let hasNameConflict = profiles.contains {
+            $0.id != profileID && $0.name.trimmingCharacters(in: .whitespacesAndNewlines) == editedName
+        }
+        guard !hasNameConflict else {
+            throw ProfileSelectionError.duplicateName
+        }
+
+        profiles[index].name = editedName
+        profiles[index].baseURLText = baseURLText.trimmingCharacters(in: .whitespacesAndNewlines)
+        profiles[index].apiKey = apiKey
+        profiles[index].updatedAt = Date()
+        profileStore.saveProfiles(profiles)
+
+        if activeProfileID == profileID {
+            applyActiveProfile(profiles[index], apiKey: apiKey)
+        }
     }
 
     public func launchSelectedAgent() async {
@@ -479,20 +618,29 @@ public final class MenuBarViewModel: ObservableObject {
         }
     }
 
+    public func testConnectionForProfile(baseURLText: String, apiKey: String) async -> (isSuccess: Bool, message: String) {
+        guard let apiBaseURL = validatedBaseURL(from: baseURLText) else {
+            return (false, "Base URL must use http(s) and include a host.")
+        }
+
+        do {
+            let discoveredModels = try await modelDiscovery.fetchModels(
+                apiBaseURL: apiBaseURL,
+                providerAPIKey: apiKey
+            )
+            let successMessage = discoveredModels.isEmpty
+                ? "Connected successfully, but no models were returned."
+                : "Connected successfully."
+            return (true, successMessage)
+        } catch {
+            return (false, "Connection failed: \(resolvedErrorMessage(from: error))")
+        }
+    }
+
     public func handlePanelPresented() async {
         guard mode == .proxy else { return }
         guard !hasPreparedProxyContext else { return }
         hasPreparedProxyContext = true
-
-        if apiKeyMasked.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            do {
-                if let persistedAPIKey = try apiKeyStore.loadAPIKey() {
-                    apiKeyMasked = persistedAPIKey
-                }
-            } catch {
-                setStatusMessage("Storage error: \(resolvedErrorMessage(from: error))", isError: true)
-            }
-        }
 
         guard canTestConnection else { return }
         await testConnection()
@@ -529,6 +677,21 @@ public final class MenuBarViewModel: ObservableObject {
         baseURLText = persistedSettings.baseURLText
         selectedModel = persistedSettings.selectedModel
         reasoningLevel = persistedSettings.reasoningLevel
+
+        profiles = profileStore.loadProfiles()
+        migrateLegacyConfigurationIfNeeded(persistedSettings: persistedSettings)
+        activeProfileID = resolvedActiveProfileID(
+            preferred: profileStore.loadActiveProfileID(),
+            from: profiles
+        )
+        if let activeProfileID,
+           let activeProfile = profiles.first(where: { $0.id == activeProfileID }) {
+            applyActiveProfile(activeProfile, apiKey: activeProfile.apiKey)
+        } else {
+            profileNameInput = ""
+            profileBaseURLInput = baseURLText
+            profileAPIKeyInput = apiKeyMasked
+        }
     }
 
     private func persistSettingsIfNeeded() {
@@ -545,11 +708,80 @@ public final class MenuBarViewModel: ObservableObject {
 
     private func persistAPIKeyIfNeeded() {
         guard !isHydratingPersistedState else { return }
-        do {
-            try apiKeyStore.saveAPIKey(apiKeyMasked)
-        } catch {
-            setStatusMessage("Storage error: \(resolvedErrorMessage(from: error))", isError: true)
+        if let activeProfileID,
+           let index = profiles.firstIndex(where: { $0.id == activeProfileID }) {
+            profiles[index].apiKey = apiKeyMasked
+            profiles[index].updatedAt = Date()
+            profileStore.saveProfiles(profiles)
         }
+    }
+
+    private var activeProfile: APIProfile? {
+        guard let activeProfileID else { return nil }
+        return profiles.first { $0.id == activeProfileID }
+    }
+
+    private func resolvedActiveProfileID(preferred: UUID?, from profiles: [APIProfile]) -> UUID? {
+        if let preferred, profiles.contains(where: { $0.id == preferred }) {
+            return preferred
+        }
+        let fallbackID = profiles.first?.id
+        if let fallbackID {
+            profileStore.saveActiveProfileID(fallbackID)
+        }
+        return fallbackID
+    }
+
+    private func migrateLegacyConfigurationIfNeeded(persistedSettings: MenuBarPersistedSettings) {
+        guard mode == .proxy else { return }
+        guard profiles.isEmpty else { return }
+
+        let legacyBaseURL = persistedSettings.baseURLText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !legacyBaseURL.isEmpty else { return }
+
+        let now = Date()
+        let migratedProfile = APIProfile(
+            id: UUID(),
+            name: "默认配置",
+            baseURLText: legacyBaseURL,
+            apiKey: "",
+            createdAt: now,
+            updatedAt: now
+        )
+        profiles = [migratedProfile]
+        profileStore.saveProfiles(profiles)
+        profileStore.saveActiveProfileID(migratedProfile.id)
+    }
+
+    private func applyActiveProfile(_ profile: APIProfile, apiKey: String) {
+        baseURLText = profile.baseURLText
+        apiKeyMasked = apiKey
+        profileNameInput = profile.name
+        profileBaseURLInput = profile.baseURLText
+        profileAPIKeyInput = apiKey
+    }
+
+    private func resolvedUniqueProfileName(from input: String) -> String {
+        let trimmed = input.trimmingCharacters(in: .whitespacesAndNewlines)
+        let baseName = trimmed.isEmpty ? "默认配置" : trimmed
+        var candidate = baseName
+        var suffix = 2
+        while profiles.contains(where: { $0.name == candidate }) {
+            candidate = "\(baseName) \(suffix)"
+            suffix += 1
+        }
+        return candidate
+    }
+
+    private func clearRuntimeProfileState() {
+        baseURLText = ""
+        apiKeyMasked = ""
+        profileNameInput = ""
+        profileBaseURLInput = ""
+        profileAPIKeyInput = ""
+        models = []
+        selectedModel = ""
+        isEditingCurrentProfile = false
     }
 
     private func setStatusMessage(_ message: String?, isError: Bool = false) {
@@ -560,5 +792,32 @@ public final class MenuBarViewModel: ObservableObject {
     private func setLaunchingAgent(_ agent: AgentTarget?) {
         isLaunchingCodex = agent == .codex
         isLaunchingClaude = agent == .claude
+    }
+}
+
+private enum ProfileSelectionError: Error {
+    case profileNotFound
+    case emptyName
+    case duplicateName
+}
+
+private final class VolatileMenuBarAPIProfileStore: MenuBarAPIProfileStoring {
+    private var profiles: [APIProfile] = []
+    private var activeProfileID: UUID?
+
+    func loadProfiles() -> [APIProfile] {
+        profiles
+    }
+
+    func saveProfiles(_ profiles: [APIProfile]) {
+        self.profiles = profiles
+    }
+
+    func loadActiveProfileID() -> UUID? {
+        activeProfileID
+    }
+
+    func saveActiveProfileID(_ profileID: UUID?) {
+        activeProfileID = profileID
     }
 }
