@@ -296,9 +296,7 @@ public final class MenuBarViewModel: ObservableObject {
 
     public var apiKeyValidationMessage: String? {
         guard mode == .proxy else { return nil }
-        return apiKeyMasked.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-            ? "API Key is required."
-            : nil
+        return nil
     }
 
     public var modelValidationMessage: String? {
@@ -354,7 +352,7 @@ public final class MenuBarViewModel: ObservableObject {
 
     public var canTestConnection: Bool {
         guard mode == .proxy, !isTestingConnection else { return false }
-        return baseURLValidationMessage == nil && apiKeyValidationMessage == nil
+        return baseURLValidationMessage == nil
     }
 
     public func launchSelectedAgent() async {
