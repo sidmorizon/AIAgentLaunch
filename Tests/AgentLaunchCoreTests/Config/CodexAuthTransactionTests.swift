@@ -21,7 +21,7 @@ final class CodexAuthTransactionTests: XCTestCase {
 
         XCTAssertTrue(FileManager.default.fileExists(atPath: paths.backupFilePath.path))
         let authDocument = try readJSONObject(from: paths.authFilePath)
-        XCTAssertEqual(authDocument["auth_mode"] as? String, "api")
+        XCTAssertEqual(authDocument["auth_mode"] as? String, "apikey")
         XCTAssertEqual(authDocument["OPENAI_API_KEY"] as? String, "sk-test-1234")
     }
 

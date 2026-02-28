@@ -78,9 +78,7 @@ public final class ModelDiscoveryService: Sendable {
 
     private func resolveModelsEndpoint(from baseURL: URL) -> URL {
         guard var components = URLComponents(url: baseURL, resolvingAgainstBaseURL: false) else {
-            return baseURL
-                .appendingPathComponent("v1", isDirectory: false)
-                .appendingPathComponent("models", isDirectory: false)
+            return baseURL.appendingPathComponent("models", isDirectory: false)
         }
 
         let trimmedPath = components.path.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
@@ -88,12 +86,10 @@ public final class ModelDiscoveryService: Sendable {
             return components.url ?? baseURL
         }
 
-        if trimmedPath.hasSuffix("v1") {
-            components.path = components.path.hasSuffix("/") ? components.path + "models" : components.path + "/models"
-        } else if trimmedPath.isEmpty {
-            components.path = "/v1/models"
+        if trimmedPath.isEmpty {
+            components.path = "/models"
         } else {
-            components.path = components.path.hasSuffix("/") ? components.path + "v1/models" : components.path + "/v1/models"
+            components.path = components.path.hasSuffix("/") ? components.path + "models" : components.path + "/models"
         }
 
         return components.url ?? baseURL

@@ -14,7 +14,7 @@ type KeyResultProps = {
 };
 
 export function KeyResult({ keyValue, maskedKey }: KeyResultProps) {
-  const defaultBaseUrl = typeof window === "undefined" ? "/v1" : `${window.location.origin}/v1`;
+  const defaultBaseUrl = typeof window === "undefined" ? "" : window.location.origin;
   const [baseUrl, setBaseUrl] = useState(defaultBaseUrl);
   const [copiedTarget, setCopiedTarget] = useState<"baseUrl" | "key" | null>(null);
   const [isTestingApi, setIsTestingApi] = useState(false);

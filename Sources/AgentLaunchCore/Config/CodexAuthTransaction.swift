@@ -86,7 +86,7 @@ public final class CodexAuthTransaction {
     }
 
     private func writeAPIModeAuthentication(apiKey: String, to authFilePath: URL) throws {
-        let document = AuthDocument(authMode: "api", apiKey: apiKey)
+        let document = AuthDocument(authMode: "apikey", apiKey: apiKey)
         let encodedDocument = try encoder.encode(document)
         guard var authText = String(data: encodedDocument, encoding: .utf8) else { return }
         authText.append("\n")

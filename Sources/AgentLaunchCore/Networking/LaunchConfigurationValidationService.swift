@@ -86,9 +86,7 @@ public final class LaunchConfigurationValidationService: Sendable {
 
     private func resolveResponsesEndpoint(from baseURL: URL) -> URL {
         guard var components = URLComponents(url: baseURL, resolvingAgainstBaseURL: false) else {
-            return baseURL
-                .appendingPathComponent("v1", isDirectory: false)
-                .appendingPathComponent("responses", isDirectory: false)
+            return baseURL.appendingPathComponent("responses", isDirectory: false)
         }
 
         let trimmedPath = components.path.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
@@ -96,12 +94,10 @@ public final class LaunchConfigurationValidationService: Sendable {
             return components.url ?? baseURL
         }
 
-        if trimmedPath.hasSuffix("v1") {
-            components.path = components.path.hasSuffix("/") ? components.path + "responses" : components.path + "/responses"
-        } else if trimmedPath.isEmpty {
-            components.path = "/v1/responses"
+        if trimmedPath.isEmpty {
+            components.path = "/responses"
         } else {
-            components.path = components.path.hasSuffix("/") ? components.path + "v1/responses" : components.path + "/v1/responses"
+            components.path = components.path.hasSuffix("/") ? components.path + "responses" : components.path + "/responses"
         }
 
         return components.url ?? baseURL

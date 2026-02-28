@@ -34,9 +34,9 @@ final class LaunchConfigurationValidationServiceTests: XCTestCase {
         )
     }
 
-    func testValidateAppendsResponsesEndpointWhenBaseURLHasNoVersionPath() async throws {
+    func testValidateAppendsResponsesEndpointWhenBaseURLHasNoPath() async throws {
         let networking = StubLaunchValidationNetworking { request in
-            XCTAssertEqual(request.url?.absoluteString, "https://example.com/v1/responses")
+            XCTAssertEqual(request.url?.absoluteString, "https://example.com/responses")
             let response = HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!
             return (Data(), response)
         }
@@ -45,6 +45,24 @@ final class LaunchConfigurationValidationServiceTests: XCTestCase {
         try await service.validate(
             configuration: AgentProxyLaunchConfig(
                 apiBaseURL: URL(string: "https://example.com")!,
+                providerAPIKey: "sk-test",
+                modelIdentifier: "gpt-5",
+                reasoningLevel: .high
+            )
+        )
+    }
+
+    func testValidateKeepsProvidedVersionPath() async throws {
+        let networking = StubLaunchValidationNetworking { request in
+            XCTAssertEqual(request.url?.absoluteString, "https://example.com/v2/responses")
+            let response = HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!
+            return (Data(), response)
+        }
+        let service = LaunchConfigurationValidationService(networking: networking)
+
+        try await service.validate(
+            configuration: AgentProxyLaunchConfig(
+                apiBaseURL: URL(string: "https://example.com/v2")!,
                 providerAPIKey: "sk-test",
                 modelIdentifier: "gpt-5",
                 reasoningLevel: .high
@@ -71,7 +89,7 @@ final class LaunchConfigurationValidationServiceTests: XCTestCase {
             )
             XCTFail("Expected rejected validation error")
         } catch let error as LaunchConfigurationValidationError {
-            XCTAssertEqual(error, .rejected("reasoning effort is not supported for model"))
+            XCTAssertEqual(error, .rejected("HTTP 400: {\"error\":{\"message\":\"reasoning effort is not supported for model\"}}"))
         } catch {
             XCTFail("Unexpected error: \(error)")
         }

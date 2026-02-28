@@ -35,7 +35,7 @@ describe("HomePage", () => {
   });
 
   it("posts token to prefixed API path and renders masked key", async () => {
-    const expectedBaseUrl = `${window.location.origin}/v1`;
+    const expectedBaseUrl = window.location.origin;
 
     vi.mocked(fetch).mockResolvedValue(
       new Response(
@@ -81,7 +81,7 @@ describe("HomePage", () => {
   it("does not render launcher download button before key is generated", () => {
     render(<HomePage />);
 
-    expect(screen.queryByRole("link", { name: "下载 Agent 启动器" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "下载 Codex 启动器 →" })).not.toBeInTheDocument();
   });
 
   it("renders launcher download button in Your Key panel after key is generated", async () => {
@@ -114,7 +114,7 @@ describe("HomePage", () => {
       );
     });
 
-    expect(screen.getByRole("link", { name: "下载 Agent 启动器" })).toHaveAttribute(
+    expect(screen.getByRole("link", { name: "下载 Codex 启动器 →" })).toHaveAttribute(
       "href",
       AGENT_LAUNCHER_DOWNLOAD_API_PATH,
     );

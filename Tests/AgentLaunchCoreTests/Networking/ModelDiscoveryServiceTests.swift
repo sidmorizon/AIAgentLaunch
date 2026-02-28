@@ -101,9 +101,9 @@ final class ModelDiscoveryServiceTests: XCTestCase {
         }
     }
 
-    func testFetchModelsAppendsV1ModelsWhenBaseURLHasNoVersionPath() async throws {
+    func testFetchModelsAppendsModelsWhenBaseURLHasNoPath() async throws {
         let networking = StubModelDiscoveryNetworking { request in
-            XCTAssertEqual(request.url?.absoluteString, "https://example.com/v1/models")
+            XCTAssertEqual(request.url?.absoluteString, "https://example.com/models")
             let response = HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!
             let body = Data("{\"data\":[{\"id\":\"gpt-5\"}]}".utf8)
             return (body, response)
@@ -112,6 +112,21 @@ final class ModelDiscoveryServiceTests: XCTestCase {
 
         _ = try await service.fetchModels(
             apiBaseURL: URL(string: "https://example.com")!,
+            providerAPIKey: "sk-test"
+        )
+    }
+
+    func testFetchModelsKeepsProvidedVersionPath() async throws {
+        let networking = StubModelDiscoveryNetworking { request in
+            XCTAssertEqual(request.url?.absoluteString, "https://example.com/v2/models")
+            let response = HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!
+            let body = Data("{\"data\":[{\"id\":\"gpt-5\"}]}".utf8)
+            return (body, response)
+        }
+        let service = ModelDiscoveryService(networking: networking)
+
+        _ = try await service.fetchModels(
+            apiBaseURL: URL(string: "https://example.com/v2")!,
             providerAPIKey: "sk-test"
         )
     }

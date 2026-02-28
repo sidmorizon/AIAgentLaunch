@@ -39,21 +39,21 @@ describe("KeyResult", () => {
       />,
     );
 
-    await user.click(screen.getByRole("button", { name: "复制 Key" }));
+    await user.click(screen.getAllByRole("button", { name: "复制" })[1]);
 
     expect(copyTextMock).toHaveBeenCalledWith(
       "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
     );
-    expect(screen.getByRole("button", { name: "已复制 Key" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "已复制" })).toBeInTheDocument();
 
     await waitFor(() => {
-      expect(screen.getByRole("button", { name: "复制 Key" })).toBeInTheDocument();
+      expect(screen.getAllByRole("button", { name: "复制" })).toHaveLength(2);
     }, { timeout: COPY_FEEDBACK_MS + 1200 });
   });
 
   it("shows editable baseURL from current origin and can copy changed value", async () => {
     const user = userEvent.setup();
-    const expectedBaseUrl = `${window.location.origin}/v1`;
+    const expectedBaseUrl = window.location.origin;
     const customBaseUrl = "https://proxy.example.com/v1";
 
     render(
@@ -69,10 +69,10 @@ describe("KeyResult", () => {
     await user.clear(baseUrlInput);
     await user.type(baseUrlInput, customBaseUrl);
 
-    await user.click(screen.getByRole("button", { name: "复制 Base URL" }));
+    await user.click(screen.getAllByRole("button", { name: "复制" })[0]);
 
     expect(copyTextMock).toHaveBeenCalledWith(customBaseUrl);
-    expect(screen.getByRole("button", { name: "已复制 Base URL" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "已复制" })).toBeInTheDocument();
   });
 
   it("renders launcher download button in Your Key panel", () => {
@@ -83,7 +83,7 @@ describe("KeyResult", () => {
       />,
     );
 
-    expect(screen.getByRole("link", { name: "下载 Agent 启动器" })).toHaveAttribute(
+    expect(screen.getByRole("link", { name: "下载 Codex 启动器 →" })).toHaveAttribute(
       "href",
       AGENT_LAUNCHER_DOWNLOAD_API_PATH,
     );
@@ -91,7 +91,7 @@ describe("KeyResult", () => {
 
   it("tests OpenAI connectivity with edited base URL and key, then renders models", async () => {
     const user = userEvent.setup();
-    const customBaseUrl = "https://proxy.example.com/v1/";
+    const customBaseUrl = "https://proxy.example.com/v2/";
 
     vi.mocked(fetch).mockResolvedValue(
       new Response(
@@ -120,7 +120,7 @@ describe("KeyResult", () => {
     await user.click(screen.getByRole("button", { name: "测试 API" }));
 
     await waitFor(() => {
-      expect(fetch).toHaveBeenCalledWith("https://proxy.example.com/v1/models", {
+      expect(fetch).toHaveBeenCalledWith("https://proxy.example.com/v2/models", {
         method: "GET",
         headers: {
           authorization:
