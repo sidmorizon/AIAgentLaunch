@@ -54,7 +54,7 @@ make dev
 
 - API Key 与 Base URL / Model 一样，持久化到 `UserDefaults`（普通本地存储）。
 - 应用不再依赖 Keychain 读取 API Key，启动不会出现 Keychain 访问弹窗。
-- CODEX 的代理启动流程会临时写入 `~/.codex/config.toml`，随后在应用启动通知或超时路径中自动恢复原始配置。
+- CODEX 的代理启动流程会临时写入 `~/.codex/config.toml`，同时备份原 `~/.codex/auth.json` 并写入 API 模式的 `auth.json`；下次通过原版模式启动 CODEX 时会恢复之前备份的 `auth.json`。
 - CLAUDE 的启动流程为 Env-Only：仅在启动进程时注入环境变量，不读取也不改写 `claude_desktop_config.json`。
 
 ## Current Scope And Known Limitations

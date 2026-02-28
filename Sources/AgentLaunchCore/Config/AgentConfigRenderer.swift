@@ -4,8 +4,7 @@ public struct AgentConfigRenderer {
     public func renderTemporaryConfiguration(
         from launchConfiguration: AgentProxyLaunchConfig,
         profileIdentifier: String = AgentProxyConfigDefaults.profileIdentifier,
-        providerDisplayName: String = AgentProxyConfigDefaults.providerDisplayName,
-        apiKeyEnvironmentVariableName: String = AgentProxyConfigDefaults.apiKeyEnvironmentVariableName
+        providerDisplayName: String = AgentProxyConfigDefaults.providerDisplayName
     ) -> String {
         return """
         profile = "\(profileIdentifier)"
@@ -19,7 +18,6 @@ public struct AgentConfigRenderer {
         name = "\(providerDisplayName)"
         base_url = "\(launchConfiguration.apiBaseURL.absoluteString)"
         wire_api = "responses"
-        env_key= "\(apiKeyEnvironmentVariableName)" # 声明自定义 API KEY 的环境变量名，必须指定，且必须通过环境变量设置，不能定义在 auth.json 里
         """
     }
 }

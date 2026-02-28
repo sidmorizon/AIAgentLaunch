@@ -113,7 +113,7 @@ final class ConfigTransactionTests: XCTestCase {
         XCTAssertFalse(mergedConfigurationText.contains("base_url = \"https://old.example.com/v1\""))
         XCTAssertFalse(mergedConfigurationText.contains("env_key= \"OLD_ENV_KEY\""))
         XCTAssertTrue(mergedConfigurationText.contains("base_url = \"https://hello.example.com/v1\""))
-        XCTAssertTrue(mergedConfigurationText.contains("env_key= \"\(AgentProxyConfigDefaults.apiKeyEnvironmentVariableName)\""))
+        XCTAssertFalse(mergedConfigurationText.contains("env_key"))
     }
 
     func testApplyTemporaryConfigurationKeepsNonConflictingKeysInsideSameSection() throws {
@@ -152,7 +152,7 @@ final class ConfigTransactionTests: XCTestCase {
         XCTAssertTrue(mergedConfigurationText.contains("preserve_me = \"legacy-extra\""))
         XCTAssertTrue(mergedConfigurationText.contains("preserve_provider_key = \"keep-this\""))
         XCTAssertTrue(mergedConfigurationText.contains("model = \"gpt-5.3-codex\""))
-        XCTAssertTrue(mergedConfigurationText.contains("env_key= \"\(AgentProxyConfigDefaults.apiKeyEnvironmentVariableName)\""))
+        XCTAssertFalse(mergedConfigurationText.contains("env_key"))
     }
 
     func testApplyTemporaryConfigurationUncommentsExistingCommentedProfileAssignmentInsteadOfAppending() throws {

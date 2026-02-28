@@ -128,17 +128,20 @@ public struct DefaultMenuBarLaunchRouter: MenuBarLaunchRouting {
     private let codexProvider: any AgentProviderBase
     private let launcher: any AgentLaunching
     private let codexCoordinator: AgentLaunchCoordinator
+    private let authTransaction: any CodexAuthTransactionHandling
     private let fileManager: FileManager
 
     public init(
         provider: any AgentProviderBase = AgentProviderCodex(),
         launcher: any AgentLaunching = AgentLauncher(),
         coordinator: AgentLaunchCoordinator? = nil,
+        authTransaction: any CodexAuthTransactionHandling = CodexAuthTransaction(),
         fileManager: FileManager = .default
     ) {
         codexProvider = provider
         self.launcher = launcher
         codexCoordinator = coordinator ?? AgentLaunchCoordinator(provider: provider)
+        self.authTransaction = authTransaction
         self.fileManager = fileManager
     }
 
@@ -150,6 +153,10 @@ public struct DefaultMenuBarLaunchRouter: MenuBarLaunchRouting {
         switch agent {
         case .codex:
             try commentOutProfileAssignmentIfNeeded(at: codexProvider.configurationFilePath)
+            try authTransaction.restoreOriginalAuthentication(
+                at: codexProvider.authFilePath,
+                backupFilePath: codexProvider.authBackupFilePath
+            )
             let launchedConfiguration = try readConfigurationTextIfPresent(at: codexProvider.configurationFilePath)
             try await launcher.launchApplication(
                 bundleIdentifier: codexProvider.applicationBundleIdentifier,

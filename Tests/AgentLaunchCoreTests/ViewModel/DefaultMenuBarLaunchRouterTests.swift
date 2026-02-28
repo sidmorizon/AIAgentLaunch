@@ -5,14 +5,14 @@ import XCTest
 @MainActor
 final class DefaultMenuBarLaunchRouterTests: XCTestCase {
     func testLaunchOriginalModeCommentsOutProfileLineForAnyValue() async throws {
-        let configurationFilePath = try makeTemporaryConfigFilePath()
+        let paths = try makeTemporaryProviderPaths()
         try """
         profile = "custom-profile"
         [profiles.custom-profile]
         model = "gpt-5"
-        """.write(to: configurationFilePath, atomically: true, encoding: .utf8)
+        """.write(to: paths.configurationFilePath, atomically: true, encoding: .utf8)
 
-        let provider = StubProvider(configurationFilePath: configurationFilePath)
+        let provider = StubProvider(paths: paths)
         let launcher = SpyLauncher()
         let transaction = SpyTransaction()
         let router = DefaultMenuBarLaunchRouter(
@@ -34,7 +34,7 @@ final class DefaultMenuBarLaunchRouterTests: XCTestCase {
         XCTAssertTrue(launcher.lastEnvironmentVariables?.isEmpty == true)
         XCTAssertEqual(transaction.applyCount, 0)
         XCTAssertEqual(
-            try String(contentsOf: configurationFilePath, encoding: .utf8),
+            try String(contentsOf: paths.configurationFilePath, encoding: .utf8),
             """
             # profile = "custom-profile"
             [profiles.custom-profile]
@@ -51,9 +51,63 @@ final class DefaultMenuBarLaunchRouterTests: XCTestCase {
         )
     }
 
+    func testLaunchOriginalModeRestoresExistingAuthFileBeforeLaunch() async throws {
+        let paths = try makeTemporaryProviderPaths()
+        let originalAuthText = """
+        {
+          "auth_mode": "device",
+          "token": "persist-me"
+        }
+        """
+        try originalAuthText.write(to: paths.authFilePath, atomically: true, encoding: .utf8)
+
+        let authTransaction = CodexAuthTransaction()
+        try authTransaction.applyProxyAuthentication(
+            apiKey: "sk-test-12345678",
+            at: paths.authFilePath,
+            backupFilePath: paths.authBackupFilePath
+        )
+
+        let provider = StubProvider(paths: paths)
+        let router = DefaultMenuBarLaunchRouter(
+            provider: provider,
+            launcher: SpyLauncher(),
+            authTransaction: authTransaction
+        )
+
+        _ = try await router.launchOriginalMode(agent: .codex)
+
+        XCTAssertEqual(try String(contentsOf: paths.authFilePath, encoding: .utf8), originalAuthText)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: paths.authBackupFilePath.path))
+    }
+
+    func testLaunchOriginalModeDeletesAuthFileWhenOriginalWasAbsent() async throws {
+        let paths = try makeTemporaryProviderPaths()
+        let authTransaction = CodexAuthTransaction()
+        try authTransaction.applyProxyAuthentication(
+            apiKey: "sk-test-12345678",
+            at: paths.authFilePath,
+            backupFilePath: paths.authBackupFilePath
+        )
+
+        XCTAssertTrue(FileManager.default.fileExists(atPath: paths.authFilePath.path))
+
+        let provider = StubProvider(paths: paths)
+        let router = DefaultMenuBarLaunchRouter(
+            provider: provider,
+            launcher: SpyLauncher(),
+            authTransaction: authTransaction
+        )
+
+        _ = try await router.launchOriginalMode(agent: .codex)
+
+        XCTAssertFalse(FileManager.default.fileExists(atPath: paths.authFilePath.path))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: paths.authBackupFilePath.path))
+    }
+
     func testLaunchProxyModeForClaudeInjectsEnvironmentAndSkipsCodexTransaction() async throws {
-        let configurationFilePath = try makeTemporaryConfigFilePath()
-        let provider = StubProvider(configurationFilePath: configurationFilePath)
+        let paths = try makeTemporaryProviderPaths()
+        let provider = StubProvider(paths: paths)
         let launcher = SpyLauncher()
         let transaction = SpyTransaction()
         let router = DefaultMenuBarLaunchRouter(
@@ -95,21 +149,39 @@ final class DefaultMenuBarLaunchRouterTests: XCTestCase {
         XCTAssertTrue(launchLog.contains("ANTHROPIC_API_KEY = \"sk-t********5678\""))
     }
 
-    private func makeTemporaryConfigFilePath() throws -> URL {
+    private func makeTemporaryProviderPaths() throws -> StubProvider.Paths {
         let root = FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString, isDirectory: true)
         let providerConfigDirectory = root.appendingPathComponent(".codex", isDirectory: true)
         try FileManager.default.createDirectory(at: providerConfigDirectory, withIntermediateDirectories: true)
-        return providerConfigDirectory.appendingPathComponent("config.toml", isDirectory: false)
+        return .init(
+            configurationFilePath: providerConfigDirectory.appendingPathComponent("config.toml", isDirectory: false),
+            authFilePath: providerConfigDirectory.appendingPathComponent("auth.json", isDirectory: false),
+            authBackupFilePath: providerConfigDirectory.appendingPathComponent("auth.json.ai-agent-launch.backup", isDirectory: false)
+        )
     }
 }
 
 private struct StubProvider: AgentProviderBase {
+    struct Paths {
+        let configurationFilePath: URL
+        let authFilePath: URL
+        let authBackupFilePath: URL
+    }
+
     let providerIdentifier = "stub"
     let providerDisplayName = "Stub"
     let applicationBundleIdentifier = "com.example.stub"
     let configurationFilePath: URL
+    let authFilePath: URL
+    let authBackupFilePath: URL
     let apiKeyEnvironmentVariableName = AgentProxyConfigDefaults.apiKeyEnvironmentVariableName
+
+    init(paths: Paths) {
+        configurationFilePath = paths.configurationFilePath
+        authFilePath = paths.authFilePath
+        authBackupFilePath = paths.authBackupFilePath
+    }
 
     func renderTemporaryConfiguration(from launchConfiguration: AgentProxyLaunchConfig) -> String {
         AgentConfigRenderer().renderTemporaryConfiguration(from: launchConfiguration)

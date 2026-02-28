@@ -7,11 +7,13 @@ final class AgentLaunchCoordinatorTests: XCTestCase {
     func testLaunchSuccessKeepsModifiedConfigurationAfterLaunchNotification() async throws {
         let provider = StubProvider()
         let transaction = SpyConfigTransaction()
+        let authTransaction = SpyAuthTransaction()
         let launcher = StubAgentLauncher()
         let eventSource = StubLaunchEventSource(mode: .didLaunch)
         let coordinator = AgentLaunchCoordinator(
             provider: provider,
             transaction: transaction,
+            authTransaction: authTransaction,
             launcher: launcher,
             launchEventSource: eventSource,
             launchTimeoutNanoseconds: 1_000_000
@@ -21,11 +23,10 @@ final class AgentLaunchCoordinatorTests: XCTestCase {
 
         XCTAssertEqual(transaction.applyCount, 1)
         XCTAssertEqual(transaction.restoreCount, 0)
+        XCTAssertEqual(authTransaction.applyCount, 1)
+        XCTAssertEqual(authTransaction.lastAPIKey, "sk-test")
         XCTAssertEqual(launcher.launchCount, 1)
-        XCTAssertEqual(
-            launcher.lastEnvironmentVariables?[AgentProxyConfigDefaults.apiKeyEnvironmentVariableName],
-            "sk-test"
-        )
+        XCTAssertTrue(launcher.lastEnvironmentVariables?.isEmpty == true)
         XCTAssertEqual(eventSource.waitCount, 1)
         XCTAssertFalse(transaction.lastTemporaryConfiguration?.contains("api_key =") == true)
         XCTAssertFalse(transaction.lastTemporaryConfiguration?.contains("sk-test") == true)
@@ -35,11 +36,13 @@ final class AgentLaunchCoordinatorTests: XCTestCase {
     func testLaunchFailureDoesNotRestoreModifiedConfiguration() async throws {
         let provider = StubProvider()
         let transaction = SpyConfigTransaction()
+        let authTransaction = SpyAuthTransaction()
         let launcher = StubAgentLauncher(shouldThrow: true)
         let eventSource = StubLaunchEventSource(mode: .didLaunch)
         let coordinator = AgentLaunchCoordinator(
             provider: provider,
             transaction: transaction,
+            authTransaction: authTransaction,
             launcher: launcher,
             launchEventSource: eventSource,
             launchTimeoutNanoseconds: 1_000_000
@@ -51,6 +54,7 @@ final class AgentLaunchCoordinatorTests: XCTestCase {
         } catch is StubLaunchError {
             XCTAssertEqual(transaction.applyCount, 1)
             XCTAssertEqual(transaction.restoreCount, 0)
+            XCTAssertEqual(authTransaction.applyCount, 1)
             XCTAssertEqual(eventSource.waitCount, 0)
         } catch {
             XCTFail("Unexpected error: \(error)")
@@ -60,11 +64,13 @@ final class AgentLaunchCoordinatorTests: XCTestCase {
     func testLaunchTimeoutPathKeepsModifiedConfiguration() async throws {
         let provider = StubProvider()
         let transaction = SpyConfigTransaction()
+        let authTransaction = SpyAuthTransaction()
         let launcher = StubAgentLauncher()
         let eventSource = StubLaunchEventSource(mode: .timeout)
         let coordinator = AgentLaunchCoordinator(
             provider: provider,
             transaction: transaction,
+            authTransaction: authTransaction,
             launcher: launcher,
             launchEventSource: eventSource,
             launchTimeoutNanoseconds: 2_000_000
@@ -73,6 +79,7 @@ final class AgentLaunchCoordinatorTests: XCTestCase {
         _ = try await coordinator.launchWithTemporaryConfiguration(makeLaunchConfiguration())
 
         XCTAssertEqual(transaction.applyCount, 1)
+        XCTAssertEqual(authTransaction.applyCount, 1)
         XCTAssertEqual(transaction.restoreCount, 0)
         XCTAssertEqual(eventSource.waitCount, 1)
     }
@@ -92,6 +99,8 @@ private struct StubProvider: AgentProviderBase {
     let providerDisplayName = "Stub"
     let applicationBundleIdentifier = "com.example.stub"
     let configurationFilePath = URL(fileURLWithPath: "/tmp/stub-config.toml")
+    let authFilePath = URL(fileURLWithPath: "/tmp/stub-auth.json")
+    let authBackupFilePath = URL(fileURLWithPath: "/tmp/stub-auth.backup")
     let apiKeyEnvironmentVariableName = AgentProxyConfigDefaults.apiKeyEnvironmentVariableName
 
     func renderTemporaryConfiguration(from launchConfiguration: AgentProxyLaunchConfig) -> String {
@@ -115,6 +124,27 @@ private final class SpyConfigTransaction: ConfigurationTransactionHandling {
 
     func restoreOriginalConfiguration(at configurationFilePath: URL) throws {
         restoreCount += 1
+    }
+}
+
+private final class SpyAuthTransaction: CodexAuthTransactionHandling {
+    private(set) var applyCount = 0
+    private(set) var restoreCount = 0
+    private(set) var lastAPIKey: String?
+    private(set) var lastAuthFilePath: URL?
+    private(set) var lastBackupFilePath: URL?
+
+    func applyProxyAuthentication(apiKey: String, at authFilePath: URL, backupFilePath: URL) throws {
+        applyCount += 1
+        lastAPIKey = apiKey
+        lastAuthFilePath = authFilePath
+        lastBackupFilePath = backupFilePath
+    }
+
+    func restoreOriginalAuthentication(at authFilePath: URL, backupFilePath: URL) throws {
+        restoreCount += 1
+        lastAuthFilePath = authFilePath
+        lastBackupFilePath = backupFilePath
     }
 }
 

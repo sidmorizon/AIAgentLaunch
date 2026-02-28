@@ -87,6 +87,7 @@ private final class LaunchWaitState: @unchecked Sendable {
 public final class AgentLaunchCoordinator {
     private let provider: any AgentProviderBase
     private let transaction: any ConfigurationTransactionHandling
+    private let authTransaction: any CodexAuthTransactionHandling
     private let launcher: any AgentLaunching
     private let launchEventSource: any ProviderLaunchEventSource
     private let launchTimeoutNanoseconds: UInt64
@@ -94,12 +95,14 @@ public final class AgentLaunchCoordinator {
     public init(
         provider: any AgentProviderBase = AgentProviderCodex(),
         transaction: any ConfigurationTransactionHandling = ConfigTransaction(),
+        authTransaction: any CodexAuthTransactionHandling = CodexAuthTransaction(),
         launcher: any AgentLaunching = AgentLauncher(),
         launchEventSource: any ProviderLaunchEventSource = WorkspaceLaunchEventSource(),
         launchTimeoutNanoseconds: UInt64 = 3_000_000_000
     ) {
         self.provider = provider
         self.transaction = transaction
+        self.authTransaction = authTransaction
         self.launcher = launcher
         self.launchEventSource = launchEventSource
         self.launchTimeoutNanoseconds = launchTimeoutNanoseconds
@@ -109,12 +112,16 @@ public final class AgentLaunchCoordinator {
         let temporaryConfiguration = provider.renderTemporaryConfiguration(from: launchConfiguration)
         let configurationFilePath = provider.configurationFilePath
         let mergedConfiguration = try transaction.applyTemporaryConfiguration(temporaryConfiguration, at: configurationFilePath)
-        let launchEnvironment = [provider.apiKeyEnvironmentVariableName: launchConfiguration.providerAPIKey]
+        try authTransaction.applyProxyAuthentication(
+            apiKey: launchConfiguration.providerAPIKey,
+            at: provider.authFilePath,
+            backupFilePath: provider.authBackupFilePath
+        )
 
         do {
             try await launcher.launchApplication(
                 bundleIdentifier: provider.applicationBundleIdentifier,
-                environmentVariables: launchEnvironment
+                environmentVariables: [:]
             )
         } catch {
             throw error
