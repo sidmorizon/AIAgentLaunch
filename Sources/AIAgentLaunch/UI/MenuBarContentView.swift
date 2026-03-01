@@ -53,7 +53,6 @@ struct MenuBarContentView: View {
         }
         .task(id: viewModel.mode) {
             await viewModel.handlePanelPresented()
-            sparkleUpdaterController.checkForUpdateInformationSilently()
         }
         .onChange(of: viewModel.canInspectLastLaunchLogText) { _, canInspect in
             if !canInspect {
