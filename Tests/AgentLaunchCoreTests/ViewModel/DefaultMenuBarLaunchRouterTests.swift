@@ -59,11 +59,11 @@ final class DefaultMenuBarLaunchRouterTests: XCTestCase {
         )
     }
 
-    func testLaunchOriginalModeRestoresExistingAuthFileBeforeLaunch() async throws {
+    func testLaunchOriginalModeRestoresExistingChatGPTAuthFileBeforeLaunch() async throws {
         let paths = try makeTemporaryProviderPaths()
         let originalAuthText = """
         {
-          "auth_mode": "device",
+          "auth_mode": "chatgpt",
           "token": "persist-me"
         }
         """
@@ -90,7 +90,7 @@ final class DefaultMenuBarLaunchRouterTests: XCTestCase {
         XCTAssertFalse(FileManager.default.fileExists(atPath: paths.authBackupFilePath.path))
     }
 
-    func testLaunchOriginalModeDeletesAuthFileWhenOriginalWasAbsent() async throws {
+    func testLaunchOriginalModeKeepsProxyAuthFileWhenBackupWasNotCreated() async throws {
         let paths = try makeTemporaryProviderPaths()
         let authTransaction = CodexAuthTransaction()
         try authTransaction.applyProxyAuthentication(
@@ -111,7 +111,10 @@ final class DefaultMenuBarLaunchRouterTests: XCTestCase {
 
         _ = try await router.launchOriginalMode(agent: .codex)
 
-        XCTAssertFalse(FileManager.default.fileExists(atPath: paths.authFilePath.path))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: paths.authFilePath.path))
+        let authDocumentData = try Data(contentsOf: paths.authFilePath)
+        let authDocument = try XCTUnwrap(JSONSerialization.jsonObject(with: authDocumentData) as? [String: Any])
+        XCTAssertEqual(authDocument["auth_mode"] as? String, "apikey")
         XCTAssertFalse(FileManager.default.fileExists(atPath: paths.authBackupFilePath.path))
     }
 
