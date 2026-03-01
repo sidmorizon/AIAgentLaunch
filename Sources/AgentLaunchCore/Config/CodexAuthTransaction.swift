@@ -5,21 +5,7 @@ public protocol CodexAuthTransactionHandling {
     func restoreOriginalAuthentication(at authFilePath: URL, backupFilePath: URL) throws
 }
 
-public enum CodexAuthTransactionError: Error {
-    case missingBackupContent
-}
-
 public final class CodexAuthTransaction {
-    private struct BackupPayload: Codable {
-        let state: OriginalState
-        let content: String?
-    }
-
-    private enum OriginalState: String, Codable {
-        case absent
-        case content
-    }
-
     private struct AuthDocument: Encodable {
         let authMode: String
         let apiKey: String
@@ -32,14 +18,12 @@ public final class CodexAuthTransaction {
 
     private let fileManager: FileManager
     private let encoder: JSONEncoder
-    private let decoder: JSONDecoder
 
     public init(fileManager: FileManager = .default) {
         self.fileManager = fileManager
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted]
         self.encoder = encoder
-        self.decoder = JSONDecoder()
     }
 
     public func applyProxyAuthentication(apiKey: String, at authFilePath: URL, backupFilePath: URL) throws {
@@ -51,38 +35,30 @@ public final class CodexAuthTransaction {
         guard fileManager.fileExists(atPath: backupFilePath.path) else { return }
 
         let backupData = try Data(contentsOf: backupFilePath)
-        let payload = try decoder.decode(BackupPayload.self, from: backupData)
-
-        switch payload.state {
-        case .absent:
-            if fileManager.fileExists(atPath: authFilePath.path) {
-                try fileManager.removeItem(at: authFilePath)
-            }
-        case .content:
-            guard let content = payload.content else {
-                throw CodexAuthTransactionError.missingBackupContent
-            }
-            try fileManager.createDirectory(at: authFilePath.deletingLastPathComponent(), withIntermediateDirectories: true)
-            try content.write(to: authFilePath, atomically: true, encoding: .utf8)
-        }
-
+        try fileManager.createDirectory(at: authFilePath.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try backupData.write(to: authFilePath, options: .atomic)
         try fileManager.removeItem(at: backupFilePath)
     }
 
     private func persistBackupIfNeeded(for authFilePath: URL, at backupFilePath: URL) throws {
         guard !fileManager.fileExists(atPath: backupFilePath.path) else { return }
+        guard fileManager.fileExists(atPath: authFilePath.path) else { return }
 
-        let payload: BackupPayload
-        if fileManager.fileExists(atPath: authFilePath.path) {
-            let originalContent = try String(contentsOf: authFilePath, encoding: .utf8)
-            payload = BackupPayload(state: .content, content: originalContent)
-        } else {
-            payload = BackupPayload(state: .absent, content: nil)
-        }
+        let originalData = try Data(contentsOf: authFilePath)
+        guard shouldBackupAuthContent(originalData) else { return }
 
         try fileManager.createDirectory(at: backupFilePath.deletingLastPathComponent(), withIntermediateDirectories: true)
-        let encodedPayload = try encoder.encode(payload)
-        try encodedPayload.write(to: backupFilePath, options: .atomic)
+        try originalData.write(to: backupFilePath, options: .atomic)
+    }
+
+    private func shouldBackupAuthContent(_ authData: Data) -> Bool {
+        guard let rootObject = try? JSONSerialization.jsonObject(with: authData),
+              let authDocument = rootObject as? [String: Any],
+              let authMode = authDocument["auth_mode"] as? String else {
+            return false
+        }
+
+        return authMode == "chatgpt"
     }
 
     private func writeAPIModeAuthentication(apiKey: String, to authFilePath: URL) throws {

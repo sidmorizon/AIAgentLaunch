@@ -3,11 +3,12 @@ import XCTest
 @testable import AgentLaunchCore
 
 final class CodexAuthTransactionTests: XCTestCase {
-    func testApplyProxyAuthenticationWritesAPIModeAuthFileAndBacksUpExistingContent() throws {
+    func testApplyProxyAuthenticationWritesAPIModeAuthFileAndBacksUpExistingChatGPTContent() throws {
         let paths = try makeTemporaryAuthPaths()
         let originalAuthText = """
         {
-          "auth_mode": "device"
+          "auth_mode": "chatgpt",
+          "token": "persist-me"
         }
         """
         try originalAuthText.write(to: paths.authFilePath, atomically: true, encoding: .utf8)
@@ -20,6 +21,30 @@ final class CodexAuthTransactionTests: XCTestCase {
         )
 
         XCTAssertTrue(FileManager.default.fileExists(atPath: paths.backupFilePath.path))
+        XCTAssertEqual(try String(contentsOf: paths.backupFilePath, encoding: .utf8), originalAuthText)
+        let authDocument = try readJSONObject(from: paths.authFilePath)
+        XCTAssertEqual(authDocument["auth_mode"] as? String, "apikey")
+        XCTAssertEqual(authDocument["OPENAI_API_KEY"] as? String, "sk-test-1234")
+    }
+
+    func testApplyProxyAuthenticationSkipsBackupWhenExistingAuthModeIsNotChatGPT() throws {
+        let paths = try makeTemporaryAuthPaths()
+        let originalAuthText = """
+        {
+          "auth_mode": "device",
+          "token": "persist-me"
+        }
+        """
+        try originalAuthText.write(to: paths.authFilePath, atomically: true, encoding: .utf8)
+
+        let transaction = CodexAuthTransaction()
+        try transaction.applyProxyAuthentication(
+            apiKey: "sk-test-1234",
+            at: paths.authFilePath,
+            backupFilePath: paths.backupFilePath
+        )
+
+        XCTAssertFalse(FileManager.default.fileExists(atPath: paths.backupFilePath.path))
         let authDocument = try readJSONObject(from: paths.authFilePath)
         XCTAssertEqual(authDocument["auth_mode"] as? String, "apikey")
         XCTAssertEqual(authDocument["OPENAI_API_KEY"] as? String, "sk-test-1234")
@@ -29,7 +54,7 @@ final class CodexAuthTransactionTests: XCTestCase {
         let paths = try makeTemporaryAuthPaths()
         let originalAuthText = """
         {
-          "auth_mode": "device",
+          "auth_mode": "chatgpt",
           "token": "persist-me"
         }
         """
@@ -50,7 +75,7 @@ final class CodexAuthTransactionTests: XCTestCase {
         XCTAssertFalse(FileManager.default.fileExists(atPath: paths.backupFilePath.path))
     }
 
-    func testRestoreOriginalAuthenticationDeletesFileWhenOriginallyAbsent() throws {
+    func testApplyProxyAuthenticationSkipsBackupWhenAuthFileDoesNotExist() throws {
         let paths = try makeTemporaryAuthPaths()
         XCTAssertFalse(FileManager.default.fileExists(atPath: paths.authFilePath.path))
 
@@ -62,21 +87,31 @@ final class CodexAuthTransactionTests: XCTestCase {
         )
 
         XCTAssertTrue(FileManager.default.fileExists(atPath: paths.authFilePath.path))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: paths.backupFilePath.path))
+    }
 
-        try transaction.restoreOriginalAuthentication(
+    func testApplyProxyAuthenticationSkipsBackupWhenAuthFileIsInvalidJSON() throws {
+        let paths = try makeTemporaryAuthPaths()
+        try "{ not-valid-json ".write(to: paths.authFilePath, atomically: true, encoding: .utf8)
+
+        let transaction = CodexAuthTransaction()
+        try transaction.applyProxyAuthentication(
+            apiKey: "sk-test-1234",
             at: paths.authFilePath,
             backupFilePath: paths.backupFilePath
         )
 
-        XCTAssertFalse(FileManager.default.fileExists(atPath: paths.authFilePath.path))
         XCTAssertFalse(FileManager.default.fileExists(atPath: paths.backupFilePath.path))
+        let authDocument = try readJSONObject(from: paths.authFilePath)
+        XCTAssertEqual(authDocument["auth_mode"] as? String, "apikey")
+        XCTAssertEqual(authDocument["OPENAI_API_KEY"] as? String, "sk-test-1234")
     }
 
     func testSecondProxyLaunchKeepsOriginalBackupState() throws {
         let paths = try makeTemporaryAuthPaths()
         let originalAuthText = """
         {
-          "auth_mode": "device",
+          "auth_mode": "chatgpt",
           "token": "persist-me"
         }
         """
